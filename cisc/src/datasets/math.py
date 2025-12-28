@@ -47,7 +47,7 @@ def _cached_ds():
             "EleutherAI/hendrycks_math", config, split="test"
         ).to_pandas()
         for config in configs
-    ])
+    ], ignore_index=True)
   return _ds
 
 

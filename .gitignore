@@ -20,4 +20,5 @@ dist/
 *.DS_Store
 
 *.ipynb
-*venv
+*venv/
+output/

@@ -22,7 +22,8 @@ import os
 import pickle
 
 import pandas as pd
-import tensorflow.compat.v2 as tf
+# import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import tqdm
 
 from cisc.src import confidence_extraction
@@ -118,8 +119,8 @@ def write_to_disk_as_pickle(
 
   config = exp_results.experiment_configuration
   if config and also_write_config:
-    file_name = os.path.join(dir_name, "experiment_conf.pkl")
-    with gfile.GFile(file_name, "wb") as f:
+    file_name = os.path.join(dir_name, "experiment_conf.json")
+    with gfile.GFile(file_name, "w") as f:
       json.dump(dataclasses.asdict(config), f)
 
 
@@ -358,7 +359,7 @@ def get_dataset_dirs(
   Returns:
     A list of fully qualified dataset directories - one for each dataset.
   """
-  versions_dir = gfile.ListDir(dir_name)
+  versions_dir = gfile.listdir(dir_name)
   if version is None:
     if len(versions_dir) != 1:
       raise ValueError(
@@ -374,9 +375,9 @@ def get_dataset_dirs(
       )
   dataset_dirs = []
   version_dir = os.path.join(dir_name, version)
-  for dataset_name in gfile.ListDir(version_dir):
+  for dataset_name in gfile.listdir(version_dir):
     dataset_full_path = os.path.join(version_dir, dataset_name)
-    if not gfile.IsDirectory(dataset_full_path):
+    if not gfile.isdir(dataset_full_path):
       continue
     dataset_dirs.append(dataset_full_path)
   return dataset_dirs
