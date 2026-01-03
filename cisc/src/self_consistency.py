@@ -49,6 +49,7 @@ class SelfConsistencyResult:
     answer_span: tuple[int, int] | None
     # The confidence extracted for this trace.
     confidence: confidence_extraction.Confidence | None = None
+    difficulty: int | None = None  # TODO: Create difficulty dataclass
 
   traces: list[Trace]
 

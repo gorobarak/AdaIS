@@ -19,6 +19,7 @@ import abc
 from collections.abc import Sequence
 import dataclasses
 import numpy as np
+import torch
 
 
 @dataclasses.dataclass(frozen=True)
@@ -37,10 +38,10 @@ class GenerationOutput:
   # Note that the scores are only for the *generated* tokens not the `prompt`.
   scores: np.ndarray | None = None
 
-  # Optional. The embeddings from the last layer of the model.
-  # Shape of [# tokens-in-prompt, # embeddings-size].
+  # Optional. The prompt embeddings from all layers of the model.
+  # Torch tensor of shape [# layers, # tokens-in-prompt, # embeddings-size].
   # Note that the embeddings are only for tokens in the `prompt`.
-  embeddings: np.ndarray | None = None
+  embeddings: torch.Tensor | None = None
 
 
 class Runner(abc.ABC):

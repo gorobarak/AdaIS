@@ -153,7 +153,7 @@ class Runner(runner_lib.Runner):
         init_func=lambda: AutoModelForCausalLM.from_pretrained(
             model_dir,
             device_map="auto",
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             use_safetensors=True,
             trust_remote_code=True,
         ),
@@ -175,14 +175,19 @@ class Runner(runner_lib.Runner):
       temperature,
       enable_formatting,
       return_scores = None,
+      return_embeddings = None,
       use_cache = True,
   ):
     """Generates a single response for each prompt."""
+    batch_size = len(prompts)
     # When generating only one token, no reason to use cache.
     use_cache = use_cache and max_new_tokens > 1
 
     if return_scores is None:
       return_scores = self._return_scores
+
+    if return_embeddings is None:
+      return_embeddings = self._return_embeddings
 
     if enable_formatting:
       prompts = self.tokenizer.apply_chat_template(
@@ -212,7 +217,7 @@ class Runner(runner_lib.Runner):
     )
 
     try:
-      return_dict_in_generate = return_scores or self._return_embeddings
+      return_dict_in_generate = return_scores or return_embeddings
       generation_output = self.model.generate(
           input_ids=input_ids,
           attention_mask=attention_mask,
@@ -228,7 +233,7 @@ class Runner(runner_lib.Runner):
           ),
           return_dict_in_generate=return_dict_in_generate,
           output_scores=return_scores,
-          output_hidden_states=self._return_embeddings,
+          output_hidden_states=return_embeddings,
           max_new_tokens=max_new_tokens,
           # Avoid the cases where the model returns <eos> immediately. This can
           # happen when the last turn was not properly formatted.
@@ -258,23 +263,32 @@ class Runner(runner_lib.Runner):
           for text in generated_texts
       ]
 
-      generated_scores = [None] * len(generated_texts)
+      generated_scores = [None] * batch_size
       if return_scores:
         # generation_output["scores"] is a tuple of length [ouput_len] where
         # each element is a vector of shape [batch_size, vocab_size].
         generated_scores = list(
             torch.stack(generation_output["scores"]).permute(1, 0, 2).cpu()
         )
-      generated_embeddings = [None] * len(generated_texts)
-      if self._return_embeddings:
+      prompt_embeddings = [None] * batch_size
+      if return_embeddings:
         # generation_output["hidden_states"] has shape
         # [output_len, model_layers, batch_size, X, embedding_size]
         # - output_len, model_layers are tuples.
         # - X size is [input_len] for the first element and [1] for the rest.
-        generated_embeddings = [
-            last_layer.cpu()
-            for last_layer in generation_output["hidden_states"][0][-1]
-        ]
+        #  Extract hidden states from all layers for the prompt (first generation step)
+        # Shape: [num_layers + 1, batch_size, prompt_len, hidden_size]
+        prompt_hidden_states = generation_output["hidden_states"][0]
+        # discard the hidden states of the embeddings layer
+        # Shape: [num_layers, batch_size, prompt_len, hidden_size]
+        prompt_hidden_states = prompt_hidden_states[1:]
+        # Create per-batch tensors of shape [num_layers, prompt_len, hidden_size]
+        prompt_embeddings = []
+        for i in range(batch_size):
+          layer_embeddings = []
+          for layer in prompt_hidden_states:
+            layer_embeddings.append(layer[i].cpu())
+          prompt_embeddings.append(torch.stack(layer_embeddings))
       del generation_output  # Release expensive GPU memory.
     finally:
       # Note that in case of a crash this still won't clear all the memory.
@@ -302,7 +316,7 @@ class Runner(runner_lib.Runner):
             processed_prompts,
             generated_texts,
             generated_scores,
-            generated_embeddings,
+            prompt_embeddings,
         )
     ]
 
