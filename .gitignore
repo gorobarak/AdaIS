@@ -19,6 +19,6 @@ dist/
 # Other
 *.DS_Store
 
-*.ipynb
+notebook.ipynb
 *venv/
 output/
