@@ -40,7 +40,7 @@ def _format_question_with_options(row):
   """Formats the question with the options."""
   # Decode options and add letters (A, B, C, ...)
   formatted_options = [
-      f"({chr(65 + i)}): {str(opt, 'utf-8')}"
+      f"({chr(65 + i)}): {opt if isinstance(opt, str) else str(opt, 'utf-8')}"
       for i, opt in enumerate(row["options"])
   ]
   question_with_options = (
