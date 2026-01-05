@@ -107,6 +107,7 @@ class BatchRunner(runner_lib.Runner):
     self._batch_size = batch_size
     self._max_wait_time_secs = max_wait_time_secs
     self._timeout_secs = timeout_secs
+    self.hf_model_name = self._runners[0].hf_model_name
 
   def _get_runner(self):
     """Returns a runner using round robin load balancing.
@@ -123,6 +124,7 @@ class BatchRunner(runner_lib.Runner):
       max_new_tokens,
       temperature,
       enable_formatting = False,
+      return_embeddings = False,
   ):
     global _QUEUE
     # Checks if its time to execute the next batch of requests. If it is, moves
@@ -145,6 +147,7 @@ class BatchRunner(runner_lib.Runner):
           max_new_tokens,
           temperature,
           enable_formatting,
+          return_embeddings,
       )
       for req, result in zip(to_execute, results):
         req.result = result
@@ -160,6 +163,7 @@ class BatchRunner(runner_lib.Runner):
       max_new_tokens,
       temperature,
       enable_formatting = False,
+      return_embeddings = False,
   ):
     """See generate function below for documentation."""
     assert len(prompts) <= self._batch_size
@@ -168,13 +172,13 @@ class BatchRunner(runner_lib.Runner):
     with _LOCK:
       my_requests = [Request(prompt) for prompt in prompts]
       _QUEUE.extend(my_requests)
-    self._maybe_advance_queue(max_new_tokens, temperature, enable_formatting)
+    self._maybe_advance_queue(max_new_tokens, temperature, enable_formatting, return_embeddings)
 
     if not wait_for_requests(my_requests, self._max_wait_time_secs):
       # After `max_wait_time_secs`, if the requests were not finished yet (which
       # is quite likely), try to advance the queue again to make sure the
       # requests at least started to run.
-      self._maybe_advance_queue(max_new_tokens, temperature, enable_formatting)
+      self._maybe_advance_queue(max_new_tokens, temperature, enable_formatting, return_embeddings)
       if not wait_for_requests(my_requests, self._timeout_secs):
         raise TimeoutError(f"Timed out after {self._timeout_secs} seconds.")
 
@@ -192,6 +196,7 @@ class BatchRunner(runner_lib.Runner):
       max_new_tokens,
       temperature,
       enable_formatting = False,
+      return_embeddings = False,
   ):
     """Generates a single response for each prompt."""
     # For now we arbitrarily choose the settings of one of the calls (e.g., the
@@ -200,7 +205,7 @@ class BatchRunner(runner_lib.Runner):
     for batch in more_itertools.batched(prompts, self._batch_size):
       try:
         res = self._generate(
-            list(batch), max_new_tokens, temperature, enable_formatting
+            list(batch), max_new_tokens, temperature, enable_formatting, return_embeddings
         )
       except TimeoutError as e:
         logging.exception("TimeoutError: %s", e)

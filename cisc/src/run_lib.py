@@ -28,6 +28,7 @@ import tqdm
 
 from cisc.src import confidence_extraction
 from cisc.src import self_consistency
+from cisc.src.diis import self_consistency_with_difficulty
 from cisc.src.datasets import bbh
 from cisc.src.datasets import dataset as dataset_lib
 from cisc.src.datasets import gsm8k
@@ -87,7 +88,7 @@ class ExperimentResult:
     """Populates the results dataframe from the self-consistency results."""
     if self.results_df is not None:
       return self.results_df
-    self.results_df = self_consistency.results_to_dataframe(
+    self.results_df = self_consistency_with_difficulty.results_to_dataframe_with_difficulty(
         self.self_consistency_results
     )
     for expected_col in [
@@ -172,7 +173,7 @@ def run_question_answering_on_dataset(
       formatted_question = dataset.format_question(row.question)
       self_consistency_futures.append(
           executor.submit(
-              self_consistency.run_self_consistency,
+              self_consistency_with_difficulty.run_self_consistency_with_difficulty,
               runner=runner,
               question_id=row.question_id,
               prompt=formatted_question,

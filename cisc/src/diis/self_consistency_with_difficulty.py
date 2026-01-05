@@ -113,7 +113,7 @@ def run_self_consistency_with_difficulty(
   )
 
   # Load difficulty scorer
-  hf_model_name = runner.model_dir
+  hf_model_name = runner.hf_model_name
   load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output/probe_results/mandarjoshi/trivia_qa/{hf_model_name}"
   # get latest checkpoint
   checkpoints = [file for file in os.listdir(load_dir) if file.endswith(".npz")]

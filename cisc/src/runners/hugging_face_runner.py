@@ -167,6 +167,7 @@ class Runner(runner_lib.Runner):
     )
     self._return_scores = return_scores
     self._return_embeddings = return_embeddings
+    self.hf_model_name = model_dir
 
   def generate(
       self,
