@@ -147,7 +147,7 @@ class BatchRunner(runner_lib.Runner):
           max_new_tokens,
           temperature,
           enable_formatting,
-          return_embeddings,
+          return_embeddings=return_embeddings,
       )
       for req, result in zip(to_execute, results):
         req.result = result
