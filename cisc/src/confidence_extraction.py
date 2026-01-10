@@ -163,7 +163,7 @@ def generate_confidence(
   original_response = original_response[: answer_span[1] + 1]
   full_prompt = original_prompt + original_response
 
-  if config.verbal_confidence != ConfidenceExtractionType.NONE:
+  if config.verbal_confidence != ConfidenceExtractionType.NONE.value:
     full_prompt = (
         original_prompt + original_response + config.verbal_confidence.prompt
     )
@@ -180,7 +180,7 @@ def generate_confidence(
         else None
     )
     confidence_result.verbal_conf = verbal
-  if config.confidence_likelihoods != ConfidenceExtractionType.NONE:
+  if config.confidence_likelihoods != ConfidenceExtractionType.NONE.value:
     full_prompt = (
         original_prompt
         + original_response
