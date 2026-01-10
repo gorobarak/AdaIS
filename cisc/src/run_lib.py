@@ -151,53 +151,41 @@ def run_question_answering_on_dataset(
     dataset,
     config,
     pbar,
-    max_workers,
+    max_workers=None,  # Kept for API compatibility, but unused
 ):
-  """Runs the `runner` on the `dataset` concurrently.
+  """Runs the `runner` on the `dataset` sequentially, batching traces per question.
 
   Args:
-    runner: the runner which runs the model
+    runner: the runner which runs the model (should be HF runner directly, not BatchRunner)
     dataset: the dataset on which to run the eval
     config: experiment meta-prameters
     pbar: progress bar to update while running
-    max_workers: max number of concurrent workers to use
+    max_workers: unused, kept for API compatibility
 
   Returns:
     self_consistency_results: the results of the self-consistency eval
   """
-  self_consistency_futures: list[futures.Future[SelfConsistencyResult]] = []
-  with futures.ThreadPoolExecutor(
-      min(max_workers, len(dataset.data))
-  ) as executor:
-    for _, row in dataset.data.iterrows():
-      formatted_question = dataset.format_question(row.question)
-      self_consistency_futures.append(
-          executor.submit(
-              self_consistency_with_difficulty.run_self_consistency_with_difficulty,
-              runner=runner,
-              question_id=row.question_id,
-              prompt=formatted_question,
-              temp=config.temperature,
-              num_traces=config.num_traces,
-              num_tokens=config.max_num_tokens,
-              dataset=dataset,
-          )
-      )
-
-    # Wait and update progress bar.
-    for _ in futures.as_completed(self_consistency_futures):
-      pbar.update(config.num_traces)
-
-  # Parse futures.
   self_consistency_results = []
-  for i, f in enumerate(self_consistency_futures):
-    if f.exception():
-      raise f.exception()
-    original_row = dataset.data.iloc[i]
-    result = f.result()
-    result.golden_label = original_row.golden_label
-    result.original_row = original_row
+  
+  for i, row in dataset.data.iterrows():
+    formatted_question = dataset.format_question(row.question)
+    
+    # Process one question at a time, batching all traces together
+    result = self_consistency_with_difficulty.run_self_consistency_with_difficulty(
+        runner=runner,
+        question_id=row.question_id,
+        prompt=formatted_question,
+        temp=config.temperature,
+        num_traces=config.num_traces,
+        num_tokens=config.max_num_tokens,
+        dataset=dataset,
+    )
+    
+    result.golden_label = row.golden_label
+    result.original_row = row
     self_consistency_results.append(result)
+    pbar.update(config.num_traces)
+  
   return self_consistency_results
 
 
@@ -218,37 +206,22 @@ def load_dataset(
 
 def enrich_dataset_with_confidence(
     input_results,
-    runner,
+    runner, # runner sholud be HF runner directly, as we don't use concurrency
     config,
     pbar,
-    max_workers,
+    max_workers=None # Kept for API compatibility, but unused
 ):
   """Enriches the traces with confidence."""
-  self_consistency_futures: list[futures.Future[SelfConsistencyResult]] = []
-  with futures.ThreadPoolExecutor(
-      min(max_workers, len(input_results))
-  ) as executor:
-    for result in input_results:
-      self_consistency_futures.append(
-          executor.submit(
-              enrich_traces_with_confidence_inplace,
-              sc_result=result,
-              runner=runner,
-              config=config,
-          )
+
+  for result in input_results:
+    enrich_traces_with_confidence_inplace(
+      sc_result=result,
+      runner=runner,
+      config=config,
       )
+    pbar.update(1)
 
-    # Wait and update progress bar.
-    for _ in futures.as_completed(self_consistency_futures):
-      pbar.update(1)
-
-  # Parse futures.
-  self_consistency_results = []
-  for f in self_consistency_futures:
-    if f.exception():
-      raise f.exception()
-    self_consistency_results.append(f.result())
-  return self_consistency_results
+  return input_results
 
 
 def run_confidence_extraction_on_experiment_results(
