@@ -19,6 +19,7 @@ from concurrent import futures
 import dataclasses
 import os
 import numpy as np
+import torch
 from cisc.src import self_consistency
 from cisc.src.diis.probe import CorrectnessScorer
 
@@ -115,12 +116,12 @@ def run_self_consistency_with_difficulty(
   # Load difficulty scorer
   hf_model_name = runner.hf_model_name
   load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output/probe_results/mandarjoshi/trivia_qa/{hf_model_name}"
-  # get latest checkpoint
   checkpoints = [file for file in os.listdir(load_dir) if file.endswith(".npz")]
   checkpoints.sort(key=lambda x: os.path.getmtime(os.path.join(load_dir, x)), reverse=True)
-  print("Latest checkpoint:", checkpoints[0])
-
   scorer = CorrectnessScorer.load(f"{load_dir}/{checkpoints[0]}")
+  print("loaded:", f"probe_results/mandarjoshi/trivia_qa/{hf_model_name}/{checkpoints[0]}")
+  
+  # Extract traces from responses in parallel
   with futures.ThreadPoolExecutor(len(prompts)) as executor:
 
     def extract_trace_from_response(response):
@@ -133,7 +134,7 @@ def run_self_consistency_with_difficulty(
           # Shape: [# layers, # tokens-in-prompt, # embeddings-size]
           num_layers = embeddings.shape[0]
           middle_layers = [int(0.5 * num_layers) + i for i in [-1, 0, 1]]
-          last_token_middle_layers_hidden_states = embeddings[middle_layers, -1, :] # shape: [3, embedding_size]
+          last_token_middle_layers_hidden_states = embeddings[middle_layers, -1, :].to(torch.float32) # shape: [3, embedding_size]
           hidden_state = last_token_middle_layers_hidden_states.mean(axis=0)
           difficulty_score = scorer.score(hidden_state)
         except (IndexError, ValueError, TypeError) as e:
