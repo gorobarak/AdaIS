@@ -495,6 +495,7 @@ def calculate_metadata(
             "incorrect_score_mean": float(mean_incorrect_val),
             "incorrect_score_std": float(std_incorrect_val),
         },
+        "validation_quantiles": scorer.quantiles.tolist(),
         "separation": float(separation),
         "threshold (midpoint between means of train set)": float(threshold),
         "training_accuracy": float(accuracy_train),
@@ -534,10 +535,11 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = int(2**12)
+    cfg.dataset_size = int(64)
     cfg.batch_size = 8
     for model_name in [
-        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen2.5-0.5B-Instruct",
+        # "Qwen/Qwen2.5-7B-Instruct",
         # "google/gemma-2-9b-it",
         # "meta-llama/Llama-3.1-8B-Instruct",
         # "mistralai/Ministral-8B-Instruct-2410",
