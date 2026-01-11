@@ -1,4 +1,3 @@
-
 # # Train correctness probe
 
 # ## Requierments:
@@ -44,6 +43,7 @@ print(f"Torch version: \t\t{torch.__version__}")
 if torch.cuda.is_available():
     print(f"Number of CUDA devices\t {torch.cuda.device_count()}")
     print(f"CUDA device:\t\t {torch.cuda.get_device_name(torch.cuda.current_device())}")
+
 
 @dataclass
 class config:
@@ -143,6 +143,7 @@ def register_activation_hooks(
 
 
 # ## Generate responses and collect activations
+
 
 def generate_and_collect_activations(
     model,
@@ -278,6 +279,7 @@ def generate_and_collect_activations(
 
 # ## LLM as a judge to label correct/incorrect
 
+
 def label_with_judge(all_questions, all_ground_truths, all_model_answers):
     global cfg
     with open(
@@ -345,17 +347,19 @@ def label_with_judge(all_questions, all_ground_truths, all_model_answers):
 
 # ## Calculate correctness direction
 
+
 def calculate_correctness_direction(
-    activations_tensor: torch.Tensor, correctness_array: np.ndarray
-) -> np.ndarray:
+    activations_tensor_train: torch.Tensor,
+    correctness_array_train: np.ndarray,
+    activations_tensor_val: torch.Tensor,
+) -> CorrectnessScorer:
     print("\nCalculating probe direction...")
 
     # Convert to numpy for easier computation
-    activations_np = activations_tensor.to(torch.float32).numpy()
-
+    activations_np = activations_tensor_train.to(torch.float32).numpy()
     # Partition into correct and incorrect
-    correct_mask = correctness_array
-    incorrect_mask = ~correctness_array
+    correct_mask = correctness_array_train
+    incorrect_mask = ~correctness_array_train
 
     correct_activations = activations_np[correct_mask]
     incorrect_activations = activations_np[incorrect_mask]
@@ -370,58 +374,101 @@ def calculate_correctness_direction(
     # New origin is the midpoint between centroids
     new_origin = (correct_centroid + incorrect_centroid) / 2
 
-    # Translate to new origin
-    correct_centered = correct_activations - new_origin
-    incorrect_centered = incorrect_activations - new_origin
-
-    # Calculate mean directions from new origin
-    mu_correct = correct_centered.mean(axis=0)
-    mu_incorrect = incorrect_centered.mean(axis=0)
-
     # Direction from incorrect to correct
-    direction = 0.5 * (mu_correct - mu_incorrect)
+    direction = 0.5 * (correct_centroid - incorrect_centroid)
+
+    # Calculate quantiles on validation set
+    scorer = CorrectnessScorer(direction, new_origin, None)
+    val_activations_np = activations_tensor_val.to(torch.float32).numpy()
+    val_scores = scorer.score(val_activations_np)
+    quantiles = np.quantile(val_scores, [0.2, 0.4, 0.6, 0.8])
+    scorer.quantiles = quantiles
 
     print(f"\nDirection vector shape: {direction.shape}")
     print(f"Direction vector norm: {np.linalg.norm(direction):.4f}")
 
-    return CorrectnessScorer(direction, new_origin)
+    return scorer
 
 
 # ## Calculate metadata
 
-def calcluate_metadata(scorer, activations_tensor, correctness_array, model):
+
+def calculate_metadata(
+    scorer,
+    activations_tensor_train,
+    correctness_array_train,
+    activations_tensor_val,
+    correctness_array_val,
+    model,
+):
     global cfg
-    print("\nEvaluating scorer on training data...")
+    print("\nEvaluating scorer on validation set...")
 
     # Convert to numpy for easier computation
-    activations_np = activations_tensor.to(torch.float32).numpy()
+    activations_train_np = activations_tensor_train.to(torch.float32).numpy()
+    activations_val_np = activations_tensor_val.to(torch.float32).numpy()
 
     # Score all activations
-    scores = scorer.score(activations_np)
+    scores_train = scorer.score(activations_train_np)
+    scores_val = scorer.score(activations_val_np)
 
-    # Analyze score distribution
-    correct_mask = correctness_array
-    incorrect_mask = ~correctness_array
-    correct_scores = scores[correct_mask]
-    incorrect_scores = scores[incorrect_mask]
+    def get_score_statistics(scores, correctness_array):
+        correct_mask = correctness_array
+        incorrect_mask = ~correctness_array
 
-    print(f"\nCorrect answers:")
-    print(f"  Mean score: {correct_scores.mean():.4f}")
-    print(f"  Std score: {correct_scores.std():.4f}")
+        num_correct = correct_mask.sum()
+        num_incorrect = incorrect_mask.sum()
 
-    print(f"\nIncorrect answers:")
-    print(f"  Mean score: {incorrect_scores.mean():.4f}")
-    print(f"  Std score: {incorrect_scores.std():.4f}")
+        correct_scores = scores[correct_mask]
+        incorrect_scores = scores[incorrect_mask]
+
+        mean_correct = correct_scores.mean()
+        mean_incorrect = incorrect_scores.mean()
+        std_correct = correct_scores.std()
+        std_incorrect = incorrect_scores.std()
+
+        return (
+            mean_correct,
+            std_correct,
+            num_correct,
+            mean_incorrect,
+            std_incorrect,
+            num_incorrect,
+        )
+
+    # Training set statistics
+    (
+        mean_correct_train,
+        std_correct_train,
+        num_correct_train,
+        mean_incorrect_train,
+        std_incorrect_train,
+        num_incorrect_train,
+    ) = get_score_statistics(scores_train, correctness_array_train)
+
+    # Validation set statistics
+    (
+        mean_correct_val,
+        std_correct_val,
+        num_correct_val,
+        mean_incorrect_val,
+        std_incorrect_val,
+        num_incorrect_val,
+    ) = get_score_statistics(scores_val, correctness_array_val)
 
     # Calculate separation
-    separation = np.abs(correct_scores.mean() - incorrect_scores.mean())
-    print(f"\nSeparation (distance between means): {separation:.4f}")
+    separation = np.abs(mean_correct_train - mean_incorrect_train)
 
     # Simple threshold classification (at midpoint)
-    threshold = (correct_scores.mean() + incorrect_scores.mean()) / 2
-    predicted_correct = scores > threshold
-    accuracy = (predicted_correct == correctness_array).mean()
-    print(f"Training accuracy: {accuracy:.2%}")
+    threshold = (mean_correct_train + mean_incorrect_train) / 2
+
+    predicted_correct = scores_train > threshold
+    accuracy_train = (predicted_correct == correctness_array_train).mean()
+    print(f"Training accuracy: {accuracy_train:.2%}")
+
+    predicted_correct_val = scores_val > threshold
+    accuracy_val = (predicted_correct_val == correctness_array_val).mean()
+    print(f"Validation accuracy: {accuracy_val:.2%}")
 
     mid_layer_idx = model.config.num_hidden_layers // 2
     layer_indices = [mid_layer_idx - 1, mid_layer_idx, mid_layer_idx + 1]
@@ -432,18 +479,32 @@ def calcluate_metadata(scorer, activations_tensor, correctness_array, model):
         "dataset_size": cfg.dataset_size,
         "seed": cfg.seed,
         "layers_idx": layer_indices,
-        "correct_score_mean": float(correct_scores.mean()),
-        "correct_score_std": float(correct_scores.std()),
-        "incorrect_score_mean": float(incorrect_scores.mean()),
-        "incorrect_score_std": float(incorrect_scores.std()),
+        "train": {
+            "num_correct": int(num_correct_train),
+            "correct_score_mean": float(mean_correct_train),
+            "correct_score_std": float(std_correct_train),
+            "num_incorrect": int(num_incorrect_train),
+            "incorrect_score_mean": float(mean_incorrect_train),
+            "incorrect_score_std": float(std_incorrect_train),
+        },
+        "validation": {
+            "num_correct": int(num_correct_val),
+            "correct_score_mean": float(mean_correct_val),
+            "correct_score_std": float(std_correct_val),
+            "num_incorrect": int(num_incorrect_val),
+            "incorrect_score_mean": float(mean_incorrect_val),
+            "incorrect_score_std": float(std_incorrect_val),
+        },
         "separation": float(separation),
-        "training_accuracy": float(accuracy),
-        "threshold (midpoint between means)": float(threshold),
+        "threshold (midpoint between means of train set)": float(threshold),
+        "training_accuracy": float(accuracy_train),
+        "validation_accuracy": float(accuracy_val),
     }
     return metadata
 
 
 # ## Save
+
 
 def save(scorer, metadata):
     global cfg
@@ -469,16 +530,17 @@ def save(scorer, metadata):
 
 # # Run whole pipline
 
+
 def run():
     global cfg
     cfg = config()
     cfg.dataset_size = int(2**12)
     cfg.batch_size = 8
     for model_name in [
-        # "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen2.5-7B-Instruct",
         # "google/gemma-2-9b-it",
-        "meta-llama/Llama-3.1-8B-Instruct",
-        "mistralai/Ministral-8B-Instruct-2410",
+        # "meta-llama/Llama-3.1-8B-Instruct",
+        # "mistralai/Ministral-8B-Instruct-2410",
     ]:
         print(f"\n\n=== Processing model: {model_name} ===")
         cfg.model_name = model_name
@@ -521,22 +583,33 @@ def run():
             all_questions, all_ground_truths, all_model_answers
         )
 
+        # Split into train and val
+        split_idx = int(
+            0.9 * len(correctness_array)
+        )  # Can do that because data is shuffled
+        correctness_array_train = correctness_array[:split_idx]
+        correctness_array_val = correctness_array[split_idx:]
+        activations_tensor_train = activations_tensor[:split_idx]
+        activations_tensor_val = activations_tensor[split_idx:]
+
         # Calculate correctness direction
-        scorer = calculate_correctness_direction(activations_tensor, correctness_array)
+        scorer = calculate_correctness_direction(
+            activations_tensor_train, correctness_array_train, activations_tensor_val
+        )
 
         # Calculate metadata
-        metadata = calcluate_metadata(
-            scorer, activations_tensor, correctness_array, model
+        metadata = calculate_metadata(
+            scorer,
+            activations_tensor_train,
+            correctness_array_train,
+            activations_tensor_val,
+            correctness_array_val,
+            model,
         )
 
         # Save results
         save(scorer, metadata)
 
 
-
 if __name__ == "__main__":
     run()
-
-
-
-
