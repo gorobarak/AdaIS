@@ -303,7 +303,7 @@ def load_dataset_from_disk(
     dataset_dir, file_name="experiment_output.pkl"
 ):
   """Loads the experiment results from the given directory."""
-  with gfile.Open(os.path.join(dataset_dir, file_name), "rb") as f:
+  with open(os.path.join(dataset_dir, file_name), "rb") as f:
     exp_result = pickle.load(f)
   return exp_result
 

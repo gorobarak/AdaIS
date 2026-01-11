@@ -113,14 +113,10 @@ def calculate_stats_for_model_and_dataset_path(
     traces_lens,
     num_bootstrap,
     return_per_question_scores,
-    file_name,
 ):
   """Processes the results of a single dataset."""
   print(f"Reading {raw_results_path} ...")
-  ds = run_lib.load_dataset_from_disk(
-      raw_results_path,
-      file_name=file_name,
-  )
+  ds = run_lib.load_dataset_from_disk(raw_results_path)
   print(f"Done reading {raw_results_path} ...")
   return calculate_stats_for_model_and_dataset(
       model_name,
