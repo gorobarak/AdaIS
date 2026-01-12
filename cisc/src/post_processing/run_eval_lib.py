@@ -165,6 +165,7 @@ def calculate_stats_for_model_and_dataset(
         traces_lens=traces_lens,
         num_bootstrap=num_bootstrap,
         return_per_question_scores=return_per_question_scores,
+        model_name=model_name,
     )
   except Exception as e:
     print(

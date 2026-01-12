@@ -53,6 +53,7 @@ def group_by_question_id(
   }
   for conf_col in confidence_cols:
     agg_dict[conf_col] = list
+  agg_dict['difficulty'] = list
   return df.groupby('question_id').agg(agg_dict)
 
 
@@ -205,6 +206,7 @@ def score(
     traces_lens: list[int],
     num_bootstrap: int,
     return_per_question_scores=False,
+    model_name: str = "",
 ) -> dict[str, list[float] | list[list[float]]]:
   """Runs a bunch of aggregators on the dataframe.
 
@@ -239,8 +241,29 @@ def score(
         stats[metric_name].append(metric_score)
       else:
         stats[metric_name].append(np.mean(metric_score).item())
+  dscore, total_traces_used = run_eval_for_diis(df, eval_func_configs, num_bootstrap, model_name)
+  stats["DIIS"] = (dscore, total_traces_used)
 
   return stats
+
+def run_eval_for_diis(
+    df: pd.DataFrame,
+    eval_func_configs: list[aggregators.AggregatorConfig],
+    num_bootstrap: int,
+
+) -> tuple[float, int]:
+  """Runs the DIIS eval on the dataframe. 
+  
+  Number of traces is selected dynamically according to the difficulty
+
+  Args:
+    df: the data on which to run the eval. Each row represents a single question
+      with multiple traces.
+    num_bootstrap: the number of bootstrap samples to take. Each bootstrap
+      sample is of size `num_traces`.
+
+  """
+
 
 
 def is_none_or_empty_string(x: Any):
