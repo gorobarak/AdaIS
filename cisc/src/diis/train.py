@@ -36,7 +36,13 @@ from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
 import openai
+import re
 from cisc.src.diis.probe import CorrectnessScorer
+from cisc.src.datasets import gsm8k
+from cisc.src.datasets import math as math_dataset
+from cisc.src.datasets import mmlu_pro
+from cisc.src.datasets import bbh
+
 
 print(f"CUDA available: \t{torch.cuda.is_available()}")
 print(f"Torch version: \t\t{torch.__version__}")
@@ -50,10 +56,7 @@ class config:
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"  # "google/gemma-2-2b-it"  hf model
     judge_model_name: str = "gpt-4o-mini"  # model used for judging answers
     base_save_dir: str = "/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output"  # base directory to save outputs
-    dataset_name: tuple[str, str] = (
-        "mandarjoshi/trivia_qa",
-        "rc",
-    )  # hf dataset name and subset
+    dataset_name: str = "MMLU"  # options are "MMLU", "GSM8K", "BBH", "MATH"
     dataset_size: int = 16
     seed: int = 1337
     batch_size: int = 2
@@ -64,9 +67,21 @@ def load_model_and_dataset():
     global cfg
     # Load dataset
     print(f"Loading dataset: {cfg.dataset_name}")
-    ds = load_dataset(*cfg.dataset_name, split="validation", streaming=False)
-    ds = ds.shuffle(seed=cfg.seed).select(range(cfg.dataset_size))
-    print(f"Dataset loaded: {len(ds)} examples")
+    match cfg.dataset_name:
+        case "MMLU":
+            ds = mmlu_pro.get_dataset()
+        case "GSM8K":
+            ds = gsm8k.get_dataset()
+        case "BBH":
+            ds = bbh.get_dataset()
+        case "MATH":
+            ds = math_dataset.get_dataset()
+        case _:
+            raise ValueError(f"Unknown dataset: {cfg.dataset_name}")
+    size = min(cfg.dataset_size, len(ds.data))
+    ds.data = ds.data.sample(size, random_state=cfg.seed, ignore_index=True)
+    ds.data["question"] = ds.data["question"].apply(ds.format_question)
+    print(f"Dataset loaded: {len(ds.data)} examples")
 
     # Load model and tokenizer
     print(f"\nLoading model: {cfg.model_name}")
@@ -143,8 +158,6 @@ def register_activation_hooks(
 
 
 # ## Generate responses and collect activations
-
-
 def generate_and_collect_activations(
     model,
     tokenizer,
@@ -156,41 +169,19 @@ def generate_and_collect_activations(
     global cfg
     print(f"\nGenerating responses with batch_size={cfg.batch_size}...")
 
-    prompt_template = """I am going to ask you a question. Answer concisely. End your sentence with {eos_token}. Here
-    are some examples of questions that might help you:
-    —--
-    Question: Which American-born Sinclair won the Nobel Prize for Literature in 1930?
-    Answer: Sinclair Lewis{eos_token}
-    —--
-    Question: {question}
-    Answer:
-    """
-    # DEBUG: print(prompt_template.format(eos_token="<|eos|>", question="Which American-born Sinclair won the Nobel Prize for Literature in 1930?"))
-    all_questions = []
-    all_ground_truths = []
-    all_model_answers = []
     all_activations = []
 
-    for i in tqdm(range(0, len(ds), cfg.batch_size)):
-        batch = ds[i : min(i + cfg.batch_size, len(ds))]
+    df = ds.data
+    for i in tqdm(range(0, len(df), cfg.batch_size)):
+        batch = df.iloc[i : min(i + cfg.batch_size, len(df))]
 
         # Prepare questions
-        questions = batch["question"]
-        all_questions.extend(questions)
-
-        # Store ground truth
-        ground_truths = [
-            ans["value"][0] if isinstance(ans["value"], list) else ans["value"]
-            for ans in batch["answer"]
-        ]
-        all_ground_truths.extend(ground_truths)
+        questions = batch[
+            "question"
+        ].tolist()  # question are already formatted as prompts
 
         # Format prompts
-        prompts = [
-            prompt_template.format(eos_token=tokenizer.eos_token, question=q)
-            for q in questions
-        ]
-        prompts = [[{"role": "user", "content": p}] for p in prompts]
+        prompts = [[{"role": "user", "content": q}] for q in questions]
 
         # Tokenize
         tokenizer.padding_side = "left"  # last token is the prompt's
@@ -205,13 +196,15 @@ def generate_and_collect_activations(
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
         # # DEBUG: print proccessed prompt
-        # print(f"procced prompts shape: {inputs['input_ids'].shape}")
-        # print("attention mask:\n", inputs['attention_mask'])
-        # procced_prompts =tokenizer.batch_decode(inputs['input_ids'], skip_special_tokens=False)
+        # print(f"inputs_ids shape: {inputs['input_ids'].shape}")
+        # print("attention mask:\n", inputs["attention_mask"])
+        # procced_prompts = tokenizer.batch_decode(
+        #     inputs["input_ids"], skip_special_tokens=False
+        # )
         # print("procced prompts:")
         # for pp in procced_prompts:
-        #     print(repr(pp))
-        # break
+        #     print("=" * 120)
+        #     print(pp)
 
         # Clear previous activations
         activations_storage_minus1.clear()
@@ -222,7 +215,7 @@ def generate_and_collect_activations(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=100,
+                max_new_tokens=756,
                 do_sample=False,  # greedy decoding matching the paper's setup
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -236,15 +229,39 @@ def generate_and_collect_activations(
         #     print(a)
         # break
 
-        # Extract answers (remove prompt)
+        # remove prompt
         prompt_lengths = inputs["input_ids"].shape[1]
         generated_tokens = outputs[:, prompt_lengths:]
         answers = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-        all_model_answers.extend(answers)
+        # remove trailing eos tokens e.g.:
+        # Before:
+        #   "I think the answer is (H)<eos><eos>"
+        #   "I would guess the answer is defintly (H)"
+        # After:
+        #   "I think the answer is (H)"
+        #   "I would guess the answer is defintly (H)"
+        answers = [a.rstrip(tokenizer.eos_token) for a in answers]
+
+        # # DEBUG: print answers after striping
+        # print("*****GENERATED ANSWERS:*****")
+        # for a in answers:
+        #     print(a)
+        #     print("=" * 120)
+
+        answers = [ds.extract_answer_func(a)[0] for a in answers]
+
+        # # DEBUG: print answers after extracing answers
+        # print("*****EXTRACTED ANSWERS:******")
+        # for a in answers:
+        #     print(a)
+        #     print("=" * 120)
+
+        # Set answers in df
+        df.loc[i : min(i + cfg.batch_size, len(df)) - 1, "answer"] = answers
 
         # Store activations from the FIRST forward pass (the prompt processing)
         # The first forward pass processes the full prompt and the hooks captures the last token activation
-        # The subsequent forward passes proccess the new generated tokens only each time sequence of length 1
+        # The subsequent forward passes proccess the new generated token only, each time sequence of length 1
         if (
             activations_storage_minus1
             and activations_storage_mid
@@ -260,21 +277,26 @@ def generate_and_collect_activations(
             )
             all_activations.append(mean_activation)
 
+    # Set is correct column
+    def normalize_str(s):
+        if s is None:
+            return ""
+        return re.sub(r"\W", "", s)
+
+    df["is_correct"] = df.apply(
+        lambda row: normalize_str(row.answer) == normalize_str(row.golden_label),
+        axis=1,
+    )
     # Remove hooks
     cleanup_hooks(model)
 
     # Concatenate all activations
     activations_tensor = torch.cat(all_activations, dim=0)
-    print(f"\nCollected {len(all_questions)} Q&A pairs")
+    print(f"Done generating generating answers for {len(df)} questions ")
     print(
         f"Activations shape: {activations_tensor.shape} (Mean of middle layers from prompt's last token)"
     )
-    return (
-        all_questions,
-        all_ground_truths,
-        all_model_answers,
-        activations_tensor,
-    )
+    return activations_tensor
 
 
 # ## LLM as a judge to label correct/incorrect
@@ -349,40 +371,29 @@ def label_with_judge(all_questions, all_ground_truths, all_model_answers):
 
 
 def calculate_correctness_direction(
-    activations_tensor_train: torch.Tensor,
-    correctness_array_train: np.ndarray,
-    activations_tensor_val: torch.Tensor,
+    acts: np.ndarray,
+    labels: np.ndarray,
 ) -> CorrectnessScorer:
     print("\nCalculating probe direction...")
 
-    # Convert to numpy for easier computation
-    activations_np = activations_tensor_train.to(torch.float32).numpy()
-    # Partition into correct and incorrect
-    correct_mask = correctness_array_train
-    incorrect_mask = ~correctness_array_train
+    correct_acts = acts[labels]
+    incorrect_acts = acts[~labels]
 
-    correct_activations = activations_np[correct_mask]
-    incorrect_activations = activations_np[incorrect_mask]
-
-    print(f"Correct activations: {correct_activations.shape}")
-    print(f"Incorrect activations: {incorrect_activations.shape}")
+    print(f"Correct activations: {correct_acts.shape}")
+    print(f"Incorrect activations: {incorrect_acts.shape}")
 
     # Calculate centroids
-    correct_centroid = correct_activations.mean(axis=0)
-    incorrect_centroid = incorrect_activations.mean(axis=0)
+    correct_centroid = correct_acts.mean(axis=0)
+    incorrect_centroid = incorrect_acts.mean(axis=0)
 
     # New origin is the midpoint between centroids
     new_origin = (correct_centroid + incorrect_centroid) / 2
 
     # Direction from incorrect to correct
-    direction = 0.5 * (correct_centroid - incorrect_centroid)
+    direction = correct_centroid - incorrect_centroid
 
     # Calculate quantiles on validation set
-    scorer = CorrectnessScorer(direction, new_origin, None)
-    val_activations_np = activations_tensor_val.to(torch.float32).numpy()
-    val_scores = scorer.score(val_activations_np)
-    quantiles = np.quantile(val_scores, [0.2, 0.4, 0.6, 0.8])
-    scorer.quantiles = quantiles
+    scorer = CorrectnessScorer(direction, new_origin)
 
     print(f"\nDirection vector shape: {direction.shape}")
     print(f"Direction vector norm: {np.linalg.norm(direction):.4f}")
@@ -395,32 +406,22 @@ def calculate_correctness_direction(
 
 def calculate_metadata(
     scorer,
-    activations_tensor_train,
-    correctness_array_train,
-    activations_tensor_val,
-    correctness_array_val,
+    acts,
+    labels,
     model,
 ):
     global cfg
-    print("\nEvaluating scorer on validation set...")
-
-    # Convert to numpy for easier computation
-    activations_train_np = activations_tensor_train.to(torch.float32).numpy()
-    activations_val_np = activations_tensor_val.to(torch.float32).numpy()
+    print("Generating metadata...")
 
     # Score all activations
-    scores_train = scorer.score(activations_train_np)
-    scores_val = scorer.score(activations_val_np)
+    scores = scorer.score(acts)
 
-    def get_score_statistics(scores, correctness_array):
-        correct_mask = correctness_array
-        incorrect_mask = ~correctness_array
+    def get_stats(scores, labels):
+        num_correct = labels.sum()
+        num_incorrect = (~labels).sum()
 
-        num_correct = correct_mask.sum()
-        num_incorrect = incorrect_mask.sum()
-
-        correct_scores = scores[correct_mask]
-        incorrect_scores = scores[incorrect_mask]
+        correct_scores = scores[labels]
+        incorrect_scores = scores[~labels]
 
         mean_correct = correct_scores.mean()
         mean_incorrect = incorrect_scores.mean()
@@ -436,39 +437,23 @@ def calculate_metadata(
             num_incorrect,
         )
 
-    # Training set statistics
     (
-        mean_correct_train,
-        std_correct_train,
-        num_correct_train,
-        mean_incorrect_train,
-        std_incorrect_train,
-        num_incorrect_train,
-    ) = get_score_statistics(scores_train, correctness_array_train)
-
-    # Validation set statistics
-    (
-        mean_correct_val,
-        std_correct_val,
-        num_correct_val,
-        mean_incorrect_val,
-        std_incorrect_val,
-        num_incorrect_val,
-    ) = get_score_statistics(scores_val, correctness_array_val)
+        mean_score_correct,
+        std_score_correct,
+        num_correct,
+        mean_score_incorrect,
+        std_score_incorrect,
+        num_incorrect,
+    ) = get_stats(scores, labels)
 
     # Calculate separation
-    separation = np.abs(mean_correct_train - mean_incorrect_train)
-
+    separation = np.abs(mean_score_correct - mean_score_incorrect)
     # Simple threshold classification (at midpoint)
-    threshold = (mean_correct_train + mean_incorrect_train) / 2
+    threshold = (mean_score_correct + mean_score_incorrect) / 2
 
-    predicted_correct = scores_train > threshold
-    accuracy_train = (predicted_correct == correctness_array_train).mean()
-    print(f"Training accuracy: {accuracy_train:.2%}")
-
-    predicted_correct_val = scores_val > threshold
-    accuracy_val = (predicted_correct_val == correctness_array_val).mean()
-    print(f"Validation accuracy: {accuracy_val:.2%}")
+    predicted_correct = scores > threshold
+    accuracy = (predicted_correct == labels).mean()
+    print(f"Accuracy: {accuracy:.2%}")
 
     mid_layer_idx = model.config.num_hidden_layers // 2
     layer_indices = [mid_layer_idx - 1, mid_layer_idx, mid_layer_idx + 1]
@@ -479,38 +464,24 @@ def calculate_metadata(
         "dataset_size": cfg.dataset_size,
         "seed": cfg.seed,
         "layers_idx": layer_indices,
-        "train": {
-            "num_correct": int(num_correct_train),
-            "correct_score_mean": float(mean_correct_train),
-            "correct_score_std": float(std_correct_train),
-            "num_incorrect": int(num_incorrect_train),
-            "incorrect_score_mean": float(mean_incorrect_train),
-            "incorrect_score_std": float(std_incorrect_train),
-        },
-        "validation": {
-            "num_correct": int(num_correct_val),
-            "correct_score_mean": float(mean_correct_val),
-            "correct_score_std": float(std_correct_val),
-            "num_incorrect": int(num_incorrect_val),
-            "incorrect_score_mean": float(mean_incorrect_val),
-            "incorrect_score_std": float(std_incorrect_val),
-        },
-        "validation_quantiles": scorer.quantiles.tolist(),
+        "num_correct": int(num_correct),
+        "correct_score_mean": float(mean_score_correct),
+        "correct_score_std": float(std_score_correct),
+        "num_incorrect": int(num_incorrect),
+        "incorrect_score_mean": float(mean_score_incorrect),
+        "incorrect_score_std": float(std_score_incorrect),
         "separation": float(separation),
         "threshold (midpoint between means of train set)": float(threshold),
-        "training_accuracy": float(accuracy_train),
-        "validation_accuracy": float(accuracy_val),
+        "accuracy": float(accuracy),
     }
     return metadata
 
 
 # ## Save
-
-
 def save(scorer, metadata):
     global cfg
     save_dir = Path(cfg.base_save_dir)
-    save_dir = save_dir / "probe_results" / cfg.dataset_name[0] / cfg.model_name
+    save_dir = save_dir / "probe_results" / cfg.dataset_name / cfg.model_name
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the scorer
@@ -535,14 +506,13 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = int(2**13) # 8192
+    cfg.dataset_size = int(2**13)  # 8192
     cfg.batch_size = 64
-    split_ratio = 0.8  # train/ val split
     for model_name in [
         # "Qwen/Qwen2.5-0.5B-Instruct",
-        # "Qwen/Qwen2.5-7B-Instruct",
         "google/gemma-2-9b-it",
-        # "meta-llama/Llama-3.1-8B-Instruct",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "Qwen/Qwen2.5-7B-Instruct",
         # "mistralai/Ministral-8B-Instruct-2410",
     ]:
         print(f"\n\n=== Processing model: {model_name} ===")
@@ -567,12 +537,7 @@ def run():
         )
 
         # Generate and collect activations
-        (
-            all_questions,
-            all_ground_truths,
-            all_model_answers,
-            activations_tensor,
-        ) = generate_and_collect_activations(
+        acts = generate_and_collect_activations(
             model,
             tokenizer,
             ds,
@@ -580,33 +545,22 @@ def run():
             activations_storage_mid,
             activations_storage_plus1,
         )
+        acts = acts.to(torch.float32).numpy()
+        labels = ds.data["is_correct"].copy().to_numpy()
 
-        # Label with judge
-        correctness_array = label_with_judge(
-            all_questions, all_ground_truths, all_model_answers
-        )
-
-        # Split into train and val
-        split_idx = int(
-            split_ratio * len(correctness_array)
-        )  # Can do that because data is shuffled
-        correctness_array_train = correctness_array[:split_idx]
-        correctness_array_val = correctness_array[split_idx:]
-        activations_tensor_train = activations_tensor[:split_idx]
-        activations_tensor_val = activations_tensor[split_idx:]
+        # # Label with judge
+        # correctness_array = label_with_judge(
+        #     all_questions, all_ground_truths, all_model_answers
+        # )
 
         # Calculate correctness direction
-        scorer = calculate_correctness_direction(
-            activations_tensor_train, correctness_array_train, activations_tensor_val
-        )
+        scorer = calculate_correctness_direction(acts, labels)
 
         # Calculate metadata
         metadata = calculate_metadata(
             scorer,
-            activations_tensor_train,
-            correctness_array_train,
-            activations_tensor_val,
-            correctness_array_val,
+            acts,
+            labels,
             model,
         )
 
