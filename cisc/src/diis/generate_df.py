@@ -53,7 +53,6 @@ class Params:
         
 params = Params()
 
-# Generate dataframe
 output_base_dir = os.path.join(
     params.output_base_dir, params.tag)
 output_base_dir_versioned = os.path.join(

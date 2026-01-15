@@ -535,12 +535,13 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = int(64)
-    cfg.batch_size = 8
+    cfg.dataset_size = int(2**13) # 8192
+    cfg.batch_size = 64
+    split_ratio = 0.8  # train/ val split
     for model_name in [
-        "Qwen/Qwen2.5-0.5B-Instruct",
+        # "Qwen/Qwen2.5-0.5B-Instruct",
         # "Qwen/Qwen2.5-7B-Instruct",
-        # "google/gemma-2-9b-it",
+        "google/gemma-2-9b-it",
         # "meta-llama/Llama-3.1-8B-Instruct",
         # "mistralai/Ministral-8B-Instruct-2410",
     ]:
@@ -587,7 +588,7 @@ def run():
 
         # Split into train and val
         split_idx = int(
-            0.9 * len(correctness_array)
+            split_ratio * len(correctness_array)
         )  # Can do that because data is shuffled
         correctness_array_train = correctness_array[:split_idx]
         correctness_array_val = correctness_array[split_idx:]

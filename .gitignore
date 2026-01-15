@@ -20,5 +20,6 @@ dist/
 *.DS_Store
 
 playground_notebook.ipynb
+playground.ipynb
 *venv/
 output/
