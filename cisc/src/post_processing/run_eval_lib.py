@@ -86,10 +86,10 @@ def get_confidence_methods_stats(
     if min_num == max_num:
       print(f"Unexpected min_num == max_num for {col_name}. Val is {min_num}")
       if min_num != 0:
-        data[col_name] = data[col_name] / min_num
+        data.loc[:, col_name] = data[col_name] / min_num
     else:
       min_max_norm = lambda x: (x - min_num) / (max_num - min_num)  # pylint: disable=cell-var-from-loop
-      data[col_name] = data[col_name].apply(min_max_norm)
+      data.loc[:, col_name] = data[col_name].apply(min_max_norm)
 
     metrics = calibration_util.fit_and_calculate_calibration_metrics(
         data, col_name
@@ -165,7 +165,6 @@ def calculate_stats_for_model_and_dataset(
         traces_lens=traces_lens,
         num_bootstrap=num_bootstrap,
         return_per_question_scores=return_per_question_scores,
-        model_name=model_name,
     )
   except Exception as e:
     print(
