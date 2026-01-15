@@ -22,14 +22,15 @@ from cisc.src.datasets import prompt_util
 _ds = None
 
 
-def _cached_ds():
+def _cached_ds(load_val):
   """Huggingface version of the dataset."""
   import datasets as hf_datasets  # pylint: disable=g-import-not-at-top
 
   global _ds
   if _ds is None:
+    split = "validation" if load_val else "test"
     _ds = hf_datasets.load_dataset(
-        "TIGER-Lab/MMLU-Pro", split="test"
+        "TIGER-Lab/MMLU-Pro", split=split
     ).to_pandas()
   return _ds
 
@@ -80,9 +81,9 @@ def get_final_answer(text):
   return ans, span
 
 
-def get_dataset():
+def get_dataset(load_val=False):
   """Returns the MMLU-pro dataset."""
-  ds = _parse_df(_cached_ds())
+  ds = _parse_df(_cached_ds(load_val))
   instructions = _get_instructions()
   ds["question_id"] = ds.index
   return dataset.Dataset(
