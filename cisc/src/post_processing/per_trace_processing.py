@@ -276,7 +276,7 @@ def post_process_results_dataframe(
   df = _process_confidence_inplace(df, confidence_config, config, debug_info)
 
   if config.re_compute_is_correct:
-    df.loc[:, 'is_correct'] = df.apply(
+    df["is_correct"] = df.apply(
         lambda row: row.answer == row.golden_label, axis=1
     )
   return df, debug_info
