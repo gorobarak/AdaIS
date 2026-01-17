@@ -136,7 +136,7 @@ def run_self_consistency_with_correctness_score(
           num_layers = embeddings.shape[0]
           middle_layers = [int(0.5 * num_layers) + i for i in [-1, 0, 1]]
           last_token_middle_layers_hidden_states = embeddings[middle_layers, -1, :].to(torch.float32) # shape: [3, embedding_size]
-          hidden_state = last_token_middle_layers_hidden_states.mean(axis=0)
+          hidden_state = last_token_middle_layers_hidden_states.mean(dim=0, keepdim=True)
           correctness_score = scorer.score(hidden_state)
         except (IndexError, ValueError, TypeError) as e:
           print(f"Warning: Could not compute correctness score: {e}")
