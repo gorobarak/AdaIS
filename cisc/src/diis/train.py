@@ -21,8 +21,10 @@
 
 # Run before imports so that HF_HOME is set
 import os
+import gc
 
 os.environ["HF_HOME"] = "/home/yandex/APDL2425a/group_12/gorodissky/.cache/huggingface"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 print(f"HF_HOME set to:\t\t {os.environ['HF_HOME']}")
 
 import torch
@@ -277,6 +279,12 @@ def generate_and_collect_activations(
             )
             all_activations.append(mean_activation)
 
+        # Release GPU memory
+        del inputs, outputs, generated_tokens
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
     # Set is correct column
     def normalize_str(s):
         if s is None:
@@ -507,7 +515,7 @@ def run():
     global cfg
     cfg = config()
     cfg.dataset_size = int(2**13)  # 8192
-    cfg.batch_size = 64
+    cfg.batch_size = 32  # Reduced from 60 to prevent OOM
     for model_name in [
         # "Qwen/Qwen2.5-0.5B-Instruct",
         "google/gemma-2-9b-it",
