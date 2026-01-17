@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Extended self-consistency utilities with difficulty scoring."""
+"""Extended self-consistency utilities with correctness scoring."""
 
 from concurrent import futures
 import dataclasses
@@ -24,19 +24,19 @@ from cisc.src import self_consistency
 from cisc.src.diis.probe import CorrectnessScorer
 
 
-def results_to_dataframe_with_difficulty(
+def results_to_dataframe_with_correctness_score(
     self_consistency_results,
 ):
-  """Converts SelfConsistencyResult to DataFrame, including difficulty scores.
+  """Converts SelfConsistencyResult to DataFrame, including correctness scores.
 
   This extends the standard results_to_dataframe function to properly handle
-  the difficulty field in traces.
+  the correctness_score field in traces.
 
   Args:
     self_consistency_results: A list of `SelfConsistencyResult`.
 
   Returns:
-    Dataframe with a row per trace, including difficulty column.
+    Dataframe with a row per trace, including correctness_score column.
   """
   import pandas as pd
   import re
@@ -56,7 +56,7 @@ def results_to_dataframe_with_difficulty(
         trace["confidence"]["verbal_conf"] if has_conf else None,
         trace["confidence"]["confidence_likelihoods"] if has_conf else None,
         trace["confidence"]["response_probability"] if has_conf else None,
-        trace.get("difficulty", None),  # Handle traces with/without difficulty
+        trace["correctness_score"]
     ])
 
   df[[
@@ -66,7 +66,7 @@ def results_to_dataframe_with_difficulty(
       "verbal_confidence",
       "confidence_likelihoods",
       "response_probability",
-      "difficulty",
+      "correctness_score",
   ]] = df.traces.apply(flatten_trace)
 
   normalize_str = lambda s: "" if s is None else re.sub(r"\W", "", s)
@@ -78,7 +78,7 @@ def results_to_dataframe_with_difficulty(
 
 
 
-def run_self_consistency_with_difficulty(
+def run_self_consistency_with_correctness_score(
     runner,
     question_id,
     prompt,
@@ -87,11 +87,11 @@ def run_self_consistency_with_difficulty(
     num_traces,
     dataset,
 ):
-  """Runs self-consistency with difficulty scoring based on embeddings.
+  """Runs self-consistency with correctness scoring based on embeddings.
 
-  This extends the standard self-consistency algorithm by computing a difficulty
+  This extends the standard self-consistency algorithm by computing a correctness
   score for each trace based on the last token's embedding (from the last layer)
-  multiplied by a provided difficulty vector.
+  multiplied by a provided correctness vector.
 
   Args:
     runner: the runner to use for querying the model.
@@ -105,7 +105,7 @@ def run_self_consistency_with_difficulty(
       prompts and how to extract the answers.
 
   Returns:
-    SelfConsistencyResult with difficulty scores populated in each trace.
+    SelfConsistencyResult with correctness scores populated in each trace.
   """
   prompts = [prompt] * num_traces
   
@@ -113,21 +113,22 @@ def run_self_consistency_with_difficulty(
       prompts, num_tokens, temp, enable_formatting=True, return_embeddings=True
   )
 
-  # Load difficulty scorer
+  # Load correctness scorer
   hf_model_name = runner.hf_model_name
-  load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output/probe_results/mandarjoshi/trivia_qa/{hf_model_name}"
+  load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output/probe_results/MMLU/{hf_model_name}"
   checkpoints = [file for file in os.listdir(load_dir) if file.endswith(".npz")]
   checkpoints.sort(key=lambda x: os.path.getmtime(os.path.join(load_dir, x)), reverse=True)
   scorer = CorrectnessScorer.load(f"{load_dir}/{checkpoints[0]}")
-  print("loaded:", f"probe_results/mandarjoshi/trivia_qa/{hf_model_name}/{checkpoints[0]}")
+  print("loaded:", f"probe_results/MMLU/{hf_model_name}/{checkpoints[0]}")
   
   # Extract traces from responses in parallel
   with futures.ThreadPoolExecutor(len(prompts)) as executor:
 
     def extract_trace_from_response(response):
-      """Extract trace information including difficulty score."""
-      # Compute difficulty score from embeddings
-      difficulty_score = None
+      """Extract trace information including correctness score."""
+      
+      # Compute correctness score from embeddings
+      correctness_score = None
       if response.embeddings is not None:
         embeddings = response.embeddings
         try:
@@ -136,18 +137,18 @@ def run_self_consistency_with_difficulty(
           middle_layers = [int(0.5 * num_layers) + i for i in [-1, 0, 1]]
           last_token_middle_layers_hidden_states = embeddings[middle_layers, -1, :].to(torch.float32) # shape: [3, embedding_size]
           hidden_state = last_token_middle_layers_hidden_states.mean(axis=0)
-          difficulty_score = scorer.score(hidden_state)
+          correctness_score = scorer.score(hidden_state)
         except (IndexError, ValueError, TypeError) as e:
-          print(f"Warning: Could not compute difficulty score: {e}")
+          print(f"Warning: Could not compute correctness score: {e}")
       
-      # Initialize trace with difficulty score
+      # Initialize trace with correctness score
       trace = self_consistency.Trace(
           prompt=response.prompt,
           response=response.response,
           exception=response.exception,
           answer=None,
           answer_span=None,
-          difficulty=difficulty_score,
+          correctness_score=correctness_score,
       )
       
       response_text = response.response
