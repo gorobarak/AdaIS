@@ -19,14 +19,16 @@ class Params:
     num_rows: int = 128  # number of questions
     max_num_tokens: int = 756
     temp: float = 0.9
-    max_workers_stage1: int = 3
-    max_workers_stage2: int = 120
+    max_workers_stage1: int = 3  # Not used
+    max_workers_stage2: int = 120  # Not used
     runner: Runner = None
     tag: str = None
     dataset_names: List[str] = None
     confidence_config: AggregatedConfidenceExtractionConfig = None
     config: run_lib.ExperimentConfiguration = None
-    output_base_dir: str = "/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output"
+    output_base_dir: str = (
+        "/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output"
+    )
 
     def __post_init__(self):
         if self.runner is None:
@@ -50,37 +52,45 @@ class Params:
                 tag=self.tag,
                 confidence_config=self.confidence_config,
             )
-        
+
+
 params = Params()
 
-output_base_dir = os.path.join(
-    params.output_base_dir, params.tag)
-output_base_dir_versioned = os.path.join(
-    output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
-)
-all_datasets_results = []
+for model_name in [
+    "Qwen/Qwen2.5-7B-Instruct",
+    "google/gemma-2-9b-it",
+    "meta-llama/Llama-3.1-8B-Instruct",
+]:
+    
+    print("Generatting data for model:", model_name)
+    params.model_name = model_name
+    output_base_dir = os.path.join(params.output_base_dir, params.tag)
+    output_base_dir_versioned = os.path.join(
+        output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
+    )
+    all_datasets_results = []
 
-#  Generate questions and answers
-all_datasets_results.extend(
-    run_lib.run_question_answering_on_datasets(
+    #  Generate questions and answers
+    all_datasets_results.extend(
+        run_lib.run_question_answering_on_datasets(
+            params.runner,
+            params.dataset_names,
+            config=params.config,
+            max_workers=params.max_workers_stage1,
+            output_base_dir=output_base_dir_versioned,
+        )
+    )
+
+    output_base_dir = os.path.join(output_base_dir, "confidence")
+    output_base_dir_versioned = os.path.join(
+        output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
+    )
+    # Generate confidence scores
+    all_datasets_results = run_lib.run_confidence_extraction_on_experiment_results(
         params.runner,
-        params.dataset_names,
-        config=params.config,
-        max_workers=params.max_workers_stage1,
+        all_datasets_results,
+        config=params.config.confidence_config,
+        max_workers=params.max_workers_stage2,
         output_base_dir=output_base_dir_versioned,
     )
-)
-
-output_base_dir = os.path.join(output_base_dir, "confidence")
-output_base_dir_versioned = os.path.join(
-    output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
-)
-# Generate confidence scores
-all_datasets_results =  run_lib.run_confidence_extraction_on_experiment_results(
-    params.runner,
-    all_datasets_results,
-    config=params.config.confidence_config,
-    max_workers=params.max_workers_stage2,
-    output_base_dir=output_base_dir_versioned,
-)
-
+    print("=" * 80)
