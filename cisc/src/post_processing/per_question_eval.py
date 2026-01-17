@@ -19,6 +19,7 @@ That is, the evaluation is done on a unit of a question rather than a single
 trace.
 """
 
+from collections import defaultdict
 import dataclasses
 from enum import Enum
 import functools
@@ -53,7 +54,7 @@ def group_by_question_id(
     }
     for conf_col in confidence_cols:
         agg_dict[conf_col] = list
-    agg_dict["difficulty"] = list
+    agg_dict["correctness_score"] = "first"  # all scores are the same for a question
     return df.groupby("question_id").agg(agg_dict)
 
 
@@ -207,7 +208,6 @@ def score(
     traces_lens: list[int],
     num_bootstrap: int,
     return_per_question_scores=False,
-    model_name: str = "",
 ) -> dict[str, list[float] | list[list[float]]]:
     """Runs a bunch of aggregators on the dataframe.
 
@@ -229,7 +229,7 @@ def score(
       lists of aggregated scores for each datapoint in `traces_lens`.
     """
     # Each time take an increment number of traces. Run eval and add to `stats`.
-    stats = {config.config_name(): [] for config in eval_func_configs}
+    stats = defaultdict(list)
     for length in tqdm.tqdm(traces_lens):
         trace_scores = run_eval_for_num_traces(
             df,
@@ -237,35 +237,75 @@ def score(
             eval_func_configs,
             num_bootstrap,
         )
+        # Traces scores is a dict from aggegator name to list of accuracy per question given that num of traces.
+        # e.g. we have 128 questions so the dict will be like {'SC': [0.7, 0.86, 0.45, ...], 'CISC': [0.7, 0.86, 0.45, ...]}
         for metric_name, metric_score in trace_scores.items():
             if return_per_question_scores:
                 stats[metric_name].append(metric_score)
             else:
                 stats[metric_name].append(np.mean(metric_score).item())
-    dscore, total_traces_used = run_eval_for_diis(
-        df, eval_func_configs, num_bootstrap, model_name
-    )
-    stats["DIIS"] = (dscore, total_traces_used)
+    for max_traces in [3, 5, 6, 7, 8, 9, 10]:
+
+        dscores, mean_num_traces = run_eval_for_diis(
+            df, max_traces, eval_func_configs, num_bootstrap 
+        )
+        for metric_name, metric_score in dscores.items():
+            if return_per_question_scores:
+                stats[metric_name].append(metric_score)
+            else:
+                stats[metric_name].append(np.mean(metric_score).item())
+
+        stats["DIIS_mean_num_traces"].append(mean_num_traces)
 
     return stats
 
 
 def run_eval_for_diis(
     df: pd.DataFrame,
+    max_traces: int,
     eval_func_configs: list[aggregators.AggregatorConfig],
     num_bootstrap: int,
 ) -> tuple[float, int]:
     """Runs the DIIS eval on the dataframe.
 
-    Number of traces is selected dynamically according to the difficulty
+    Number of traces is selected dynamically in the range [1, max_traces] according to the correctness score 
 
     Args:
       df: the data on which to run the eval. Each row represents a single question
         with multiple traces.
+      max_traces: the maximum number of traces to use per question.
+      eval_func_configs: the configs of the eval functions to run (e.g., SC or
+        CISC).
       num_bootstrap: the number of bootstrap samples to take. Each bootstrap
         sample is of size `num_traces`.
-
     """
+    total_budget = 0
+    all_scores = {config.config_name(): [] for config in eval_func_configs}
+    for _, row in df.iterrows():
+        inference_level = get_inference_level(row["correctness_score"], max_traces=max_traces)
+        total_budget += inference_level
+        # scores is a dict from aggegator name to list of size 1 of accuracy for that question
+        scores = run_eval_for_num_traces(
+            pd.DataFrame([row]),
+            inference_level,
+            eval_func_configs,
+            num_bootstrap,
+        )
+        for metric_name, metric_score in scores.items():
+            all_scores[metric_name].extend(metric_score)
+
+    # now all_scores is a dict from aggegator name to list of accuracy per question
+    all_scores = {"DIIS_" + k: v for k, v in all_scores.items()}
+    mean_num_traces = total_budget / len(df)
+    return all_scores, mean_num_traces
+
+
+def get_inference_level(correctness_score: float, max_traces: int = 5) -> int:
+    # correctness_score is in [0, 1], higher is more likely to be correct thus less traces needed
+    # if score is 0.0. return max_traces; if score is 1.0 return 1 trace
+    num_traces = max(1, max_traces -  int(np.round(correctness_score * max_traces)))
+    return num_traces
+ 
 
 
 def is_none_or_empty_string(x: Any):
