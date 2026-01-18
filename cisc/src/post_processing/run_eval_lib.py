@@ -111,6 +111,7 @@ def calculate_stats_for_model_and_dataset_path(
     re_compute_is_correct,
     aggregator_configs,
     traces_lens,
+    max_traces_for_diis,
     num_bootstrap,
     return_per_question_scores,
 ):
@@ -119,16 +120,17 @@ def calculate_stats_for_model_and_dataset_path(
   ds = run_lib.load_dataset_from_disk(raw_results_path)
   print(f"Done reading {raw_results_path} ...")
   return calculate_stats_for_model_and_dataset(
-      model_name,
-      ds,
-      raw_results_path,
-      filter_answers,
-      round_negative_conf_to_zero,
-      re_compute_is_correct,
-      aggregator_configs,
-      traces_lens,
-      num_bootstrap,
-      return_per_question_scores,
+      model_name=model_name,
+      ds=ds,
+      raw_results_path=raw_results_path,
+      filter_answers=filter_answers,
+      round_negative_conf_to_zero=round_negative_conf_to_zero,
+      re_compute_is_correct=re_compute_is_correct,
+      aggregator_configs=aggregator_configs,
+      traces_lens=traces_lens,
+      max_traces_for_diis=max_traces_for_diis,
+      num_bootstrap=num_bootstrap,
+      return_per_question_scores=return_per_question_scores,
   )
 
 
@@ -141,6 +143,7 @@ def calculate_stats_for_model_and_dataset(
     re_compute_is_correct,
     aggregator_configs,
     traces_lens,
+    max_traces_for_diis,
     num_bootstrap,
     return_per_question_scores,
 ):
@@ -160,9 +163,10 @@ def calculate_stats_for_model_and_dataset(
   gb_data = per_question_eval.group_by_question_id(data)
   try:
     score_stats = per_question_eval.score(
-        gb_data,
+        df=gb_data,
         eval_func_configs=aggregator_configs,
         traces_lens=traces_lens,
+        max_traces_for_diis=max_traces_for_diis,
         num_bootstrap=num_bootstrap,
         return_per_question_scores=return_per_question_scores,
     )
