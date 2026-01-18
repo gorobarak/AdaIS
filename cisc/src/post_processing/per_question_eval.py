@@ -206,6 +206,7 @@ def score(
     df: pd.DataFrame,
     eval_func_configs: list[aggregators.AggregatorConfig],
     traces_lens: list[int],
+    max_traces_for_diis: list[int],
     num_bootstrap: int,
     return_per_question_scores=False,
 ) -> dict[str, list[float] | list[list[float]]]:
@@ -223,6 +224,7 @@ def score(
         sample is of size `num_traces`.
       return_per_question_scores: If True, returns the scores for each question
         separately. Otherwise, returns the average score over all questions.
+      max_traces_for_diis: The maximum number of traces to use for DIIS.
 
     Returns:
       A dictionary of where keys are the eval function names and the values are
@@ -244,7 +246,7 @@ def score(
                 stats[metric_name].append(metric_score)
             else:
                 stats[metric_name].append(np.mean(metric_score).item())
-    for max_traces in [3, 5, 6, 7, 8, 9, 10]:
+    for max_traces in max_traces_for_diis:
 
         dscores, mean_num_traces = run_eval_for_diis(
             df, max_traces, eval_func_configs, num_bootstrap 
