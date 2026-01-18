@@ -176,19 +176,20 @@ def calculate_stats_for_model_and_dataset(
         f" {model_name} {raw_results_path}"
     )
     raise e
-  try:
-    confidence_methods_stats = get_confidence_methods_stats(
-        data, gb_data, num_bootstrap
-    )
-  except Exception as e:
-    print(
-        "Failed to run get_confidence_methods_stats for"
-        f" {model_name} {raw_results_path}"
-    )
-    raise e
+  # We don't care about confidence methods stats for now.
+  # try:
+  #   confidence_methods_stats = get_confidence_methods_stats(
+  #       data, gb_data, num_bootstrap
+  #   )
+  # except Exception as e:
+  #   print(
+  #       "Failed to run get_confidence_methods_stats for"
+  #       f" {model_name} {raw_results_path}"
+  #   )
+  #   raise e
   return DatasetStats(
       ds.dataset_name,
       score_stats,
       debug_info,
-      confidence_methods_stats,
+      None,
   )
