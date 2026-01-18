@@ -67,7 +67,7 @@ for model_name in [
 
     output_base_dir = os.path.join(params.output_base_dir, params.tag)
     output_base_dir_versioned = os.path.join(
-        output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
+        output_base_dir, datetime.now().strftime("%Y_%m_%d-%H:%M")
     )
     all_datasets_results = []
 
@@ -84,7 +84,7 @@ for model_name in [
 
     output_base_dir = os.path.join(output_base_dir, "confidence")
     output_base_dir_versioned = os.path.join(
-        output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
+        output_base_dir, datetime.now().strftime("%Y_%m_%d-%H:%M")
     )
     # Generate confidence scores
     all_datasets_results = run_lib.run_confidence_extraction_on_experiment_results(
