@@ -14,7 +14,7 @@ from cisc.src.confidence_extraction import (
 
 @dataclass
 class Params:
-    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
+    model_name: str
     num_traces: int = 30  # total number of traces generated per question
     num_rows: int = 128  # number of questions
     max_num_tokens: int = 756
@@ -54,16 +54,17 @@ class Params:
             )
 
 
-params = Params()
+
 
 for model_name in [
-    "Qwen/Qwen2.5-7B-Instruct",
+    # "Qwen/Qwen2.5-7B-Instruct",
     "google/gemma-2-9b-it",
     "meta-llama/Llama-3.1-8B-Instruct",
 ]:
     
     print("Generatting data for model:", model_name)
-    params.model_name = model_name
+    params = Params(model_name=model_name)
+
     output_base_dir = os.path.join(params.output_base_dir, params.tag)
     output_base_dir_versioned = os.path.join(
         output_base_dir, datetime.now().strftime("%Y_%m_%d_%H:%M")
