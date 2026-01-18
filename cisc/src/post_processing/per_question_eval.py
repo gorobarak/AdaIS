@@ -305,7 +305,9 @@ def run_eval_for_diis(
 def get_inference_level(correctness_score: float, max_traces: int = 5) -> int:
     # correctness_score is in [0, 1], higher is more likely to be correct thus less traces needed
     # if score is 0.0. return max_traces; if score is 1.0 return 1 trace
+    # num_traces = max(1, int(np.round(correctness_score * max_traces))) # inverse scale
     num_traces = max(1, max_traces -  int(np.round(correctness_score * max_traces)))
+    # print(f"correctness_score: {correctness_score:.3f}, selected num_traces: {num_traces}/{max_traces}")
     return num_traces
  
 
