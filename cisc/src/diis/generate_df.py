@@ -58,8 +58,9 @@ class Params:
 
 for model_name in [
     # "Qwen/Qwen2.5-7B-Instruct",
-    "google/gemma-2-9b-it",
-    "meta-llama/Llama-3.1-8B-Instruct",
+    # "google/gemma-2-9b-it",
+    # "meta-llama/Llama-3.1-8B-Instruct",
+    "mistralai/Ministral-8B-Instruct-2410",
 ]:
     
     print("Generatting data for model:", model_name)
