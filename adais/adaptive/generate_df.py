@@ -27,7 +27,7 @@ class Params:
     confidence_config: AggregatedConfidenceExtractionConfig = None
     config: run_lib.ExperimentConfiguration = None
     output_base_dir: str = (
-        "/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output"
+        "/home/yandex/APDL2425a/group_12/gorodissky/AdaIS/output"
     )
 
     def __post_init__(self):
