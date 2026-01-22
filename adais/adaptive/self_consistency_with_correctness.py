@@ -68,10 +68,13 @@ def results_to_dataframe_with_correctness_score(
       "response_probability",
       "correctness_score",
   ]] = df.traces.apply(flatten_trace)
-
-  normalize_str = lambda s: "" if s is None else re.sub(r"\W", "", s)
+  def normalize_str(s):
+    if pd.isna(s):
+      return ""
+    return re.sub(r"\W", "", str(s))
+  
   df["is_correct"] = df.apply(
-      lambda row: normalize_str(row.answer) == normalize_str(row.golden_label),
+      lambda row: normalize_str(row["answer"]) == normalize_str(row["golden_label"]),
       axis=1,
   )
   return df
@@ -115,7 +118,7 @@ def run_self_consistency_with_correctness_score(
 
   # Load correctness scorer
   hf_model_name = runner.hf_model_name
-  load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output/probe_results/MMLU/{hf_model_name}"
+  load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/AdaIS/output/probe_results/MMLU/{hf_model_name}"
   checkpoints = [file for file in os.listdir(load_dir) if file.endswith(".npz")]
   checkpoints.sort(key=lambda x: os.path.getmtime(os.path.join(load_dir, x)), reverse=True)
   scorer = CorrectnessScorer.load(f"{load_dir}/{checkpoints[0]}")

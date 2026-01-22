@@ -299,12 +299,22 @@ def run_question_answering_on_datasets(
   return all_datasets_outputs
 
 
+class _RenameUnpickler(pickle.Unpickler):
+  """Custom unpickler that handles module renames (cisc -> adais)."""
+
+  def find_class(self, module, name):
+    # Remap old 'cisc' module to new 'adais' module
+    if module.startswith("cisc"):
+      module = module.replace("cisc.src", "adais", 1)
+    return super().find_class(module, name)
+
+
 def load_dataset_from_disk(
     dataset_dir, file_name="experiment_output.pkl"
 ):
   """Loads the experiment results from the given directory."""
   with open(os.path.join(dataset_dir, file_name), "rb") as f:
-    exp_result = pickle.load(f)
+    exp_result = _RenameUnpickler(f).load()
   return exp_result
 
 

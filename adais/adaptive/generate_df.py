@@ -15,8 +15,8 @@ from adais.confidence_extraction import (
 @dataclass
 class Params:
     model_name: str
-    num_traces: int = 30  # total number of traces generated per question
-    num_rows: int = 128  # number of questions
+    num_traces: int = 2  # total number of traces generated per question
+    num_rows: int = 1  # number of questions
     max_num_tokens: int = 756
     temp: float = 0.9
     max_workers_stage1: int = 3  # Not used
@@ -59,8 +59,8 @@ class Params:
 for model_name in [
     # "Qwen/Qwen2.5-7B-Instruct",
     # "google/gemma-2-9b-it",
-    # "meta-llama/Llama-3.1-8B-Instruct",
-    "mistralai/Ministral-8B-Instruct-2410",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    # "mistralai/Ministral-8B-Instruct-2410",
 ]:
     
     print("Generatting data for model:", model_name)
