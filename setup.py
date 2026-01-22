@@ -28,7 +28,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Setup cisc package."""
+"""Setup adais package."""
 
 import pathlib
 
@@ -36,22 +36,23 @@ import setuptools
 
 
 setuptools.setup(
-    name="cisc",
+    name="adais",
     version="0.1.0",
     description=(
-        "Confidence Improves Self Consistency - arxiv.org/abs/2502.06233"
+        "Based on Confidence Improves Self Consistency - arxiv.org/abs/2502.06233"
     ),
-    long_description=open("README.md").read(),
-    long_description_content_type="text/markdown",
+    # long_description=open("README.md").read(),
+    # long_description_content_type="text/markdown",
     license="Apache 2.0",
-    author="Google Research",
-    url="http://github.com/google-research/google-research/cisc",
-    package_dir={"cisc": "."},
+    # author="Google Research",
+    # url="http://github.com/google-research/google-research/cisc",
+    package_dir={"adais": "."},
     packages=[
-        "cisc.src",
-        "cisc.src.datasets",
-        "cisc.src.post_processing",
-        "cisc.src.runners",
+        "adais.src",
+        "adais.src.datasets",
+        "adais.src.post_processing",
+        "adais.src.runners",
+        "adais.src.adais",
     ],
     install_requires=pathlib.Path("requirements.txt").read_text().splitlines(),
     classifiers=[
