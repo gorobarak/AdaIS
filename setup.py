@@ -46,13 +46,12 @@ setuptools.setup(
     license="Apache 2.0",
     # author="Google Research",
     # url="http://github.com/google-research/google-research/cisc",
-    package_dir={"adais": "."},
     packages=[
-        "adais.src",
-        "adais.src.datasets",
-        "adais.src.post_processing",
-        "adais.src.runners",
-        "adais.src.adais",
+        "adais",
+        "adais.datasets",
+        "adais.post_processing",
+        "adais.runners",
+        "adais.adaptive",
     ],
     install_requires=pathlib.Path("requirements.txt").read_text().splitlines(),
     classifiers=[
