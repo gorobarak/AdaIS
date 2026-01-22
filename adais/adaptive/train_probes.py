@@ -22,13 +22,8 @@
 # Run before imports so that HF_HOME is set
 import os
 import gc
-
-os.environ["HF_HOME"] = "/home/yandex/APDL2425a/group_12/gorodissky/.cache/huggingface"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-print(f"HF_HOME set to:\t\t {os.environ['HF_HOME']}")
-
 import torch
-from typing import Tuple, List
+from typing import List
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import numpy as np
@@ -152,11 +147,7 @@ def register_activation_hooks(
         activation_hook_plus1
     )
 
-    return (
-        activations_storage_minus1,
-        activations_storage_mid,
-        activations_storage_plus1,
-    )
+    return np.array(layer_indices)
 
 
 # ## Generate responses and collect activations
@@ -242,13 +233,13 @@ def generate_and_collect_activations(
         # After:
         #   "I think the answer is (H)"
         #   "I would guess the answer is defintly (H)"
-        answers = [a.rstrip(tokenizer.eos_token) for a in answers]
+        # answers = [a.rstrip(tokenizer.eos_token) for a in answers]
 
-        # # DEBUG: print answers after striping
-        # print("*****GENERATED ANSWERS:*****")
-        # for a in answers:
-        #     print(a)
-        #     print("=" * 120)
+        # DEBUG: print answers after striping
+        print("*****GENERATED ANSWERS:*****")
+        for a in answers:
+            print(a)
+            print("=" * 120)
 
         answers = [ds.extract_answer_func(a)[0] for a in answers]
 
@@ -283,7 +274,6 @@ def generate_and_collect_activations(
         del inputs, outputs, generated_tokens
         gc.collect()
         torch.cuda.empty_cache()
-
 
     # Set is correct column
     def normalize_str(s):
@@ -381,6 +371,7 @@ def label_with_judge(all_questions, all_ground_truths, all_model_answers):
 def calculate_correctness_direction(
     acts: np.ndarray,
     labels: np.ndarray,
+    layer_indices: np.ndarray,
 ) -> CorrectnessScorer:
     print("\nCalculating probe direction...")
 
@@ -401,7 +392,7 @@ def calculate_correctness_direction(
     direction = correct_centroid - incorrect_centroid
 
     # Calculate quantiles on validation set
-    scorer = CorrectnessScorer(direction, new_origin)
+    scorer = CorrectnessScorer(direction, new_origin, layer_indices)
 
     print(f"\nDirection vector shape: {direction.shape}")
     print(f"Direction vector norm: {np.linalg.norm(direction):.4f}")
@@ -416,7 +407,7 @@ def calculate_metadata(
     scorer,
     acts,
     labels,
-    model,
+    layer_indices,
 ):
     global cfg
     print("Generating metadata...")
@@ -463,15 +454,12 @@ def calculate_metadata(
     accuracy = (predicted_correct == labels).mean()
     print(f"Accuracy: {accuracy:.2%}")
 
-    mid_layer_idx = model.config.num_hidden_layers // 2
-    layer_indices = [mid_layer_idx - 1, mid_layer_idx, mid_layer_idx + 1]
-
     metadata = {
         "model_name": cfg.model_name,
         "dataset_name": cfg.dataset_name,
         "dataset_size": cfg.dataset_size,
         "seed": cfg.seed,
-        "layers_idx": layer_indices,
+        "layers_idx": layer_indices.tolist(),
         "num_correct": int(num_correct),
         "correct_score_mean": float(mean_score_correct),
         "correct_score_std": float(std_score_correct),
@@ -514,14 +502,14 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = int(2**13)  # 8192
-    cfg.batch_size = 32  # Reduced from 60 to prevent OOM
+    cfg.dataset_size = 32  # 4096
+    cfg.batch_size = 32
     for model_name in [
-        # "Qwen/Qwen2.5-0.5B-Instruct",
+        "Qwen/Qwen2.5-0.5B-Instruct",
         # "google/gemma-2-9b-it",
         # "meta-llama/Llama-3.1-8B-Instruct",
         # "Qwen/Qwen2.5-7B-Instruct",
-        "mistralai/Ministral-8B-Instruct-2410",
+        # "mistralai/Ministral-8B-Instruct-2410",
     ]:
         print(f"\n\n=== Processing model: {model_name} ===")
         cfg.model_name = model_name
@@ -533,11 +521,7 @@ def run():
         activations_storage_plus1: List[torch.Tensor] = []
 
         # Register hooks
-        (
-            activations_storage_minus1,
-            activations_storage_mid,
-            activations_storage_plus1,
-        ) = register_activation_hooks(
+        layer_indices = register_activation_hooks(
             model,
             activations_storage_minus1,
             activations_storage_mid,
@@ -562,14 +546,14 @@ def run():
         # )
 
         # Calculate correctness direction
-        scorer = calculate_correctness_direction(acts, labels)
+        scorer = calculate_correctness_direction(acts, labels, layer_indices)
 
         # Calculate metadata
         metadata = calculate_metadata(
             scorer,
             acts,
             labels,
-            model,
+            layer_indices,
         )
 
         # Save results
