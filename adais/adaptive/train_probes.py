@@ -52,7 +52,7 @@ if torch.cuda.is_available():
 class config:
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"  # "google/gemma-2-2b-it"  hf model
     judge_model_name: str = "gpt-4o-mini"  # model used for judging answers
-    base_save_dir: str = "/home/yandex/APDL2425a/group_12/gorodissky/google-research/cisc/output"  # base directory to save outputs
+    base_save_dir: str = "/home/yandex/APDL2425a/group_12/gorodissky/AdaIS/output"  # base directory to save outputs
     dataset_name: str = "MMLU"  # options are "MMLU", "GSM8K", "BBH", "MATH"
     dataset_size: int = 16
     seed: int = 1337
@@ -226,20 +226,12 @@ def generate_and_collect_activations(
         prompt_lengths = inputs["input_ids"].shape[1]
         generated_tokens = outputs[:, prompt_lengths:]
         answers = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-        # remove trailing eos tokens e.g.:
-        # Before:
-        #   "I think the answer is (H)<eos><eos>"
-        #   "I would guess the answer is defintly (H)"
-        # After:
-        #   "I think the answer is (H)"
-        #   "I would guess the answer is defintly (H)"
-        # answers = [a.rstrip(tokenizer.eos_token) for a in answers]
 
-        # DEBUG: print answers after striping
-        print("*****GENERATED ANSWERS:*****")
-        for a in answers:
-            print(a)
-            print("=" * 120)
+        # # DEBUG: print answers
+        # print("*****GENERATED ANSWERS:*****")
+        # for a in answers:
+        #     print(a)
+        #     print("=" * 120)
 
         answers = [ds.extract_answer_func(a)[0] for a in answers]
 
@@ -502,14 +494,14 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = 32  # 4096
+    cfg.dataset_size = int(2*12)  # 4096
     cfg.batch_size = 32
     for model_name in [
-        "Qwen/Qwen2.5-0.5B-Instruct",
-        # "google/gemma-2-9b-it",
-        # "meta-llama/Llama-3.1-8B-Instruct",
-        # "Qwen/Qwen2.5-7B-Instruct",
-        # "mistralai/Ministral-8B-Instruct-2410",
+        # "Qwen/Qwen2.5-0.5B-Instruct",
+        "google/gemma-2-9b-it",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "mistralai/Ministral-8B-Instruct-2410",
     ]:
         print(f"\n\n=== Processing model: {model_name} ===")
         cfg.model_name = model_name

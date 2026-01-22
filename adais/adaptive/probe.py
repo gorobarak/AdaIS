@@ -10,16 +10,18 @@ class CorrectnessScorer:
         direction_norm (float): The norm of the direction vector
     """
 
-    def __init__(self, direction: np.ndarray, origin: np.ndarray):
+    def __init__(self, direction: np.ndarray, origin: np.ndarray, layer_indices: np.ndarray):
         """
         Initialize the scorer with a direction and origin.
 
         Args:
             direction: The direction vector from incorrect to correct
             origin: The origin vector (midpoint of centroids)
+            layer_indices: Layer indices from which hidden states were taken
         """
         self.direction = direction / np.linalg.norm(direction)
         self.origin = origin
+        self.layer_indices = layer_indices
         
 
     def normalize_to_0_1(self, cosine_sim):
@@ -51,10 +53,10 @@ class CorrectnessScorer:
 
     def save(self, filepath: str):
         """Save the scorer to disk."""
-        np.savez(filepath, direction=self.direction, origin=self.origin)
+        np.savez(filepath, direction=self.direction, origin=self.origin, layer_indices=self.layer_indices)
 
     @classmethod
     def load(cls, filepath: str):
         """Load a scorer from disk."""
         data = np.load(filepath)
-        return cls(direction=data["direction"], origin=data["origin"])
+        return cls(direction=data["direction"], origin=data["origin"], layer_indices=data["layer_indices"])
