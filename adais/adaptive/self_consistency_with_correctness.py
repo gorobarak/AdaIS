@@ -93,8 +93,8 @@ def run_self_consistency_with_correctness_score(
   """Runs self-consistency with correctness scoring based on embeddings.
 
   This extends the standard self-consistency algorithm by computing a correctness
-  score for each trace based on the last token's embedding (from the last layer)
-  multiplied by a provided correctness vector.
+  score for each trace based on the last prompt's token embedding (from the middle layers)
+  multiplied by a preprocessed correctness scorer.
 
   Args:
     runner: the runner to use for querying the model.
@@ -116,12 +116,14 @@ def run_self_consistency_with_correctness_score(
       prompts, num_tokens, temp, enable_formatting=True, return_embeddings=True
   )
 
-  # Load correctness scorer
+  # Load correctness scorer (latest checkpoint)
   hf_model_name = runner.hf_model_name
   load_dir = f"/home/yandex/APDL2425a/group_12/gorodissky/AdaIS/output/probe_results/MMLU/{hf_model_name}"
   checkpoints = [file for file in os.listdir(load_dir) if file.endswith(".npz")]
   checkpoints.sort(key=lambda x: os.path.getmtime(os.path.join(load_dir, x)), reverse=True)
   scorer = CorrectnessScorer.load(f"{load_dir}/{checkpoints[0]}")
+  assert len(scorer.layer_indices.shape) == 1, "Expected 1D array of layer indices"
+  layer_indices = scorer.layer_indices.tolist()
   print("loaded:", f"probe_results/MMLU/{hf_model_name}/{checkpoints[0]}")
   
   # Extract traces from responses in parallel
@@ -136,13 +138,13 @@ def run_self_consistency_with_correctness_score(
         embeddings = response.embeddings
         try:
           # Shape: [# layers, # tokens-in-prompt, # embeddings-size]
-          num_layers = embeddings.shape[0]
-          middle_layers = [int(0.5 * num_layers) + i for i in [-1, 0, 1]]
-          last_token_middle_layers_hidden_states = embeddings[middle_layers, -1, :].to(torch.float32) # shape: [3, embedding_size]
+          last_token_middle_layers_hidden_states = embeddings[layer_indices, -1, :].to(torch.float32) # shape: [3, embedding_size]
           hidden_state = last_token_middle_layers_hidden_states.mean(dim=0, keepdim=True)
           correctness_score = scorer.score(hidden_state)
-        except (IndexError, ValueError, TypeError) as e:
-          print(f"Warning: Could not compute correctness score: {e}")
+        except Exception as e:
+          print("Warning: Could not compute correctness score")
+          raise e
+
       
       # Initialize trace with correctness score
       trace = self_consistency.Trace(
