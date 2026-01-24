@@ -27,6 +27,7 @@ from typing import List
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import numpy as np
+import pandas as pd
 from tqdm.auto import tqdm
 import json
 from pathlib import Path
@@ -208,7 +209,7 @@ def generate_and_collect_activations(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=756,
+                max_new_tokens=1024,
                 do_sample=False,  # greedy decoding matching the paper's setup
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -269,7 +270,7 @@ def generate_and_collect_activations(
 
     # Set is correct column
     def normalize_str(s):
-        if s is None:
+        if pd.isna(s):
             return ""
         return re.sub(r"\W", "", s)
 
@@ -494,7 +495,7 @@ def save(scorer, metadata):
 def run():
     global cfg
     cfg = config()
-    cfg.dataset_size = int(2*12)  # 4096
+    cfg.dataset_size = 10000 
     cfg.batch_size = 32
     for model_name in [
         # "Qwen/Qwen2.5-0.5B-Instruct",
