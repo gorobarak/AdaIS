@@ -283,7 +283,7 @@ class Runner(runner_lib.Runner):
         # discard the hidden states of the embeddings layer
         # Shape: [num_layers, batch_size, prompt_len, hidden_size]
         prompt_hidden_states = prompt_hidden_states[1:]
-        # Create per-batch tensors of shape [num_layers, prompt_len, hidden_size]
+        # Switch layers and batch dimenstion resulting [batch_size, num_layers, prompt_len, hidden_size]
         prompt_embeddings = []
         for i in range(batch_size):
           layer_embeddings = []
