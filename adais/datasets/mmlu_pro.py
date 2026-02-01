@@ -28,11 +28,12 @@ def _cached_ds(load_val):
 
   global _ds
   if _ds is None:
+    # Initialize the dataset
     split = "validation" if load_val else "test"
     _ds = hf_datasets.load_dataset(
         "TIGER-Lab/MMLU-Pro", split=split
     ).to_pandas()
-  return _ds
+  return _ds.copy() # return a copy for modifications
 
 
 
