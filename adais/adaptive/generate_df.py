@@ -16,8 +16,8 @@ from adais.confidence_extraction import (
 class Params:
     model_name: str
     num_traces: int = 30  # total number of traces generated per question
-    num_rows: int = 128 # number of questions
-    max_num_tokens: int = 756 
+    num_rows: int = 333 # number of questions
+    max_num_tokens: int = 1024 
     temp: float = 0.9
     max_workers_stage1: int = 3  # Not used
     max_workers_stage2: int = 120  # Not used
