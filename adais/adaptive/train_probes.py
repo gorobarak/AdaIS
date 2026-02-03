@@ -166,7 +166,7 @@ def generate_and_collect_activations(
     all_activations = []
 
     df = ds.data
-    for i in tqdm(range(0, len(df), cfg.batch_size)):
+    for i in tqdm(range(0, len(df), cfg.batch_size), desc="Batches"):
         batch = df.iloc[i : min(i + cfg.batch_size, len(df))]
 
         # Prepare questions
