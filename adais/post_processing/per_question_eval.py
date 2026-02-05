@@ -309,7 +309,7 @@ def get_inference_level(correctness_score: float, max_traces: int = 5) -> int:
     # num_traces = max(1, int(np.round(correctness_score * max_traces))) # inverse scale
     num_traces = max(1, max_traces -  int(np.round(correctness_score * max_traces)))
     
-    # print(f"correctness_score: {correctness_score:.3f}, selected num_traces: {num_traces}/{max_traces}")
+    print(f"correctness_score: {correctness_score:.3f}, selected num_traces: {num_traces}/{max_traces}")
     return num_traces
  
 
