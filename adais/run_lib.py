@@ -195,7 +195,7 @@ def load_dataset(
   if dataset_name == "GSM8K":
     return gsm8k.get_dataset()
   elif dataset_name == "MMLU":
-    return mmlu_pro.get_dataset()
+    return mmlu_pro.get_dataset(validation=True)
   elif dataset_name == "MATH":
     return math_dataset.get_dataset()
   elif dataset_name == "BBH":
@@ -278,14 +278,6 @@ def run_question_answering_on_datasets(
   for dataset_name in dataset_names:
     # Run on dataset.
     dataset = load_dataset(dataset_name)
-    # Set dataset as the 20% examples set aside for eval, see train_probes.py for 80% train split.
-    # Seed used for shuffle is 1337 to match train_probes.py
-    seed=1337
-    dataset.data = dataset.data.sample(frac=1.0, random_state=seed)
-    cutoff = int(0.8 * len(dataset.data))
-    dataset.data = dataset.data.iloc[cutoff:]
-    print(f"Cutoff used for dataset: {cutoff}, size after cutoff: {len(dataset.data)}, seed: {seed}")
-
     num_rows = min(config.num_rows, len(dataset.data))
     dataset.data = dataset.data.sample(num_rows, random_state=seed)
     print(f"Running on dataset: {dataset_name}")

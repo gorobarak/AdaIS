@@ -76,15 +76,6 @@ def load_model_and_dataset():
             ds = math_dataset.get_dataset()
         case _:
             raise ValueError(f"Unknown dataset: {cfg.dataset_name}")
-    # Take only 80% of the dataset for training, see run_lib.py for 20% eval split.
-    # Seed used for shuffle is 1337 to match run_lib.py
-    cfg.seed = 1337
-    ds.data = ds.data.sample(frac=1, random_state=cfg.seed, ignore_index=True) # shuffle
-    cutoff = int(len(ds.data) * 0.8) 
-    ds.data = ds.data.iloc[: cutoff]
-    print(f"Cutoff used for dataset: {cutoff}, size after cutoff: {len(ds.data)}, seed: {cfg.seed}")
-
-
     size = min(cfg.dataset_size, len(ds.data))
     ds.data = ds.data.sample(size, random_state=cfg.seed, ignore_index=True)
     ds.data["question"] = ds.data["question"].apply(ds.format_question)
@@ -508,10 +499,12 @@ def run():
     cfg.batch_size = 32
     for model_name in [
         # "Qwen/Qwen2.5-0.5B-Instruct",
-        "google/gemma-2-9b-it",
-        "meta-llama/Llama-3.1-8B-Instruct",
-        "Qwen/Qwen2.5-7B-Instruct",
-        "mistralai/Ministral-8B-Instruct-2410",
+        # "google/gemma-2-9b-it",
+        # "meta-llama/Llama-3.1-8B-Instruct",
+        # "Qwen/Qwen2.5-7B-Instruct",
+        # "mistralai/Ministral-8B-Instruct-2410",
+        "Qwen/Qwen2.5-3B-Instruct",
+        "Qwen/Qwen2.5-14B-Instruct",
     ]:
         print(f"\n\n=== Processing model: {model_name} ===")
         cfg.model_name = model_name
