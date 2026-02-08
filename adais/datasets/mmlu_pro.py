@@ -25,56 +25,55 @@ _loaded = False
 
 
 def _cached_ds(validation=False):
-  """Huggingface version of the dataset."""
-  import datasets as hf_datasets  # pylint: disable=g-import-not-at-top
+    """Huggingface version of the dataset."""
+    import datasets as hf_datasets  # pylint: disable=g-import-not-at-top
 
-  global _ds_train_split, _ds_val_split, _loaded
-  if not _loaded:
-    # Initialize the dataset 
-    local_ds = hf_datasets.load_dataset(
-        "TIGER-Lab/MMLU-Pro", split="test"
-    ).to_pandas()
-    # Split into train and val
-    local_ds = local_ds.sample(frac=1, random_state=31) # shuffle
-    split_idx = int(0.8 * len(local_ds))
-    _ds_train_split = local_ds.iloc[:split_idx].copy() # copy and not reference becuase local_ds will be grabage collected
-    _ds_val_split = local_ds.iloc[split_idx:].copy()
-    _loaded = True
-  # we return a copy because the parsing modifies in place
-  if validation:
-    return _ds_val_split.copy() 
-  return _ds_train_split.copy()
-
-
+    global _ds_train_split, _ds_val_split, _loaded
+    if not _loaded:
+        # Initialize the dataset
+        local_ds = hf_datasets.load_dataset(
+            "TIGER-Lab/MMLU-Pro", split="test"
+        ).to_pandas()
+        # Split into train and val
+        local_ds = local_ds.sample(frac=1, random_state=31)  # shuffle
+        split_idx = int(0.8 * len(local_ds))
+        _ds_train_split = local_ds.iloc[
+            :split_idx
+        ].copy()  # copy and not reference becuase local_ds will be grabage collected
+        _ds_val_split = local_ds.iloc[split_idx:].copy()
+        _loaded = True
+    # we return a copy because the parsing modifies in place
+    if validation:
+        return _ds_val_split.copy()
+    return _ds_train_split.copy()
 
 
 def _format_question_with_options(row):
-  """Formats the question with the options."""
-  # Decode options and add letters (A, B, C, ...)
-  formatted_options = [
-      f"({chr(65 + i)}): {opt if isinstance(opt, str) else str(opt, 'utf-8')}"
-      for i, opt in enumerate(row["options"])
-  ]
-  question_with_options = (
-      f"{row['question_no_choices']}\nOptions are:\n"
-      + "\n".join(formatted_options)
-  )
-  return question_with_options
+    """Formats the question with the options."""
+    # Decode options and add letters (A, B, C, ...)
+    formatted_options = [
+        f"({chr(65 + i)}): {opt if isinstance(opt, str) else str(opt, 'utf-8')}"
+        for i, opt in enumerate(row["options"])
+    ]
+    question_with_options = f"{row['question_no_choices']}\nOptions are:\n" + "\n".join(
+        formatted_options
+    )
+    return question_with_options
 
 
 def _parse_df(ds):
-  ds.columns = ds.columns.str.replace("^default/", "", regex=True)
-  ds.rename(
-      columns={"question": "question_no_choices", "answer": "golden_label"},
-      inplace=True,
-  )
-  ds["question"] = ds.apply(_format_question_with_options, axis=1)
-  return ds
+    ds.columns = ds.columns.str.replace("^default/", "", regex=True)
+    ds.rename(
+        columns={"question": "question_no_choices", "answer": "golden_label"},
+        inplace=True,
+    )
+    ds["question"] = ds.apply(_format_question_with_options, axis=1)
+    return ds
 
 
 def _get_instructions():
-  """Returns the task's instructions."""
-  return f"""You will be given a single-choice question. Answer the question by selecting the letter of the best fitting option.
+    """Returns the task's instructions."""
+    return f"""You will be given a single-choice question. Answer the question by selecting the letter of the best fitting option.
 
 {prompt_util.general_instructions()}
 
@@ -82,24 +81,24 @@ The answer MUST ALWAYS be the letter of one of the available options; it CANNOT 
 
 
 def get_final_answer(text):
-  ans, span = prompt_util.get_final_answer(
-      text,
-      # Any letter from A to J as MMLU contains 10 options.
-      match_part_pattern=r"((?:[A-J]\b))",
-  )
-  if ans is not None:
-    ans = ans.upper()
-  return ans, span
+    ans, span = prompt_util.get_final_answer(
+        text,
+        # Any letter from A to J as MMLU contains 10 options.
+        match_part_pattern=r"((?:[A-J]\b))",
+    )
+    if ans is not None:
+        ans = ans.upper()
+    return ans, span
 
 
 def get_dataset(validation=False):
-  """Returns the MMLU-pro dataset."""
-  ds = _parse_df(_cached_ds(validation))
-  instructions = _get_instructions()
-  ds["question_id"] = ds.index
-  ds.reset_index(drop=True, inplace=True)
-  return dataset.Dataset(
-      ds,
-      instructions,
-      get_final_answer,
-  )
+    """Returns the MMLU-pro dataset."""
+    ds = _parse_df(_cached_ds(validation))
+    instructions = _get_instructions()
+    ds["question_id"] = ds.index
+    ds.reset_index(drop=True, inplace=True)
+    return dataset.Dataset(
+        ds,
+        instructions,
+        get_final_answer,
+    )
