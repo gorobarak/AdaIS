@@ -19,21 +19,31 @@ import pandas as pd
 from adais.datasets import dataset
 from adais.datasets import prompt_util
 
-_ds = None
+_ds_train_split = None
+_ds_val_split = None
+_loaded = False
 
 
-def _cached_ds(load_val):
+def _cached_ds(validation=False):
   """Huggingface version of the dataset."""
   import datasets as hf_datasets  # pylint: disable=g-import-not-at-top
 
-  global _ds
-  if _ds is None:
-    # Initialize the dataset
-    split = "validation" if load_val else "test"
-    _ds = hf_datasets.load_dataset(
-        "TIGER-Lab/MMLU-Pro", split=split
+  global _ds_train_split, _ds_val_split, _loaded
+  if not _loaded:
+    # Initialize the dataset 
+    local_ds = hf_datasets.load_dataset(
+        "TIGER-Lab/MMLU-Pro", split="test"
     ).to_pandas()
-  return _ds.copy() # return a copy for modifications
+    # Split into train and val
+    local_ds = local_ds.sample(frac=1, random_state=31) # shuffle
+    split_idx = int(0.8 * len(local_ds))
+    _ds_train_split = local_ds.iloc[:split_idx].copy() # copy and not reference becuase local_ds will be grabage collected
+    _ds_val_split = local_ds.iloc[split_idx:].copy()
+    _loaded = True
+  # we return a copy because the parsing modifies in place
+  if validation:
+    return _ds_val_split.copy() 
+  return _ds_train_split.copy()
 
 
 
@@ -74,7 +84,7 @@ The answer MUST ALWAYS be the letter of one of the available options; it CANNOT 
 def get_final_answer(text):
   ans, span = prompt_util.get_final_answer(
       text,
-      # Any letter from A to H as MMLU contains 10 options.
+      # Any letter from A to J as MMLU contains 10 options.
       match_part_pattern=r"((?:[A-J]\b))",
   )
   if ans is not None:
@@ -82,11 +92,12 @@ def get_final_answer(text):
   return ans, span
 
 
-def get_dataset(load_val=False):
+def get_dataset(validation=False):
   """Returns the MMLU-pro dataset."""
-  ds = _parse_df(_cached_ds(load_val))
+  ds = _parse_df(_cached_ds(validation))
   instructions = _get_instructions()
   ds["question_id"] = ds.index
+  ds.reset_index(drop=True, inplace=True)
   return dataset.Dataset(
       ds,
       instructions,
