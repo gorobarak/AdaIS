@@ -15,7 +15,7 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from adais.datasets import math
+from adais.datasets import math_dataset
 
 
 class MathTest(parameterized.TestCase):
@@ -78,7 +78,7 @@ class MathTest(parameterized.TestCase):
       ),
   )
   def test_get_final_normalized_answer(self, text, expected):
-    self.assertEqual(expected, math.get_final_normalized_answer(text)[0])
+    self.assertEqual(expected, math_dataset.get_final_normalized_answer(text)[0])
 
   @parameterized.named_parameters(
       dict(
@@ -108,7 +108,7 @@ class MathTest(parameterized.TestCase):
       ),
   )
   def test_extract_answer_from_last_box(self, text, expected):
-    self.assertEqual(expected, math.extract_answer_from_last_box(text))
+    self.assertEqual(expected, math_dataset.extract_answer_from_last_box(text))
 
 
 if __name__ == '__main__':

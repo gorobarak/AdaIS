@@ -32,7 +32,7 @@ from adais.adaptive import self_consistency_with_correctness
 from adais.datasets import bbh
 from adais.datasets import dataset as dataset_lib
 from adais.datasets import gsm8k
-from adais.datasets import math as math_dataset
+from adais.datasets import math_dataset
 from adais.datasets import mmlu_pro
 from adais.runners import runner as runner_lib
 
