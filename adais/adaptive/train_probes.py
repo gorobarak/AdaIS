@@ -24,7 +24,6 @@ import os
 import gc
 import torch
 from typing import List
-from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import numpy as np
 import pandas as pd
@@ -37,7 +36,7 @@ import openai
 import re
 from adais.adaptive.probe import CorrectnessScorer
 from adais.datasets import gsm8k
-from adais.datasets import math as math_dataset
+from adais.datasets import math_dataset
 from adais.datasets import mmlu_pro
 from adais.datasets import bbh
 
@@ -166,8 +165,12 @@ def generate_and_collect_activations(
     all_activations = []
 
     df = ds.data
+    df["answer"] = None
+    df["raw_answer"] = None
     for i in tqdm(range(0, len(df), cfg.batch_size), desc="Batches"):
-        batch = df.iloc[i : min(i + cfg.batch_size, len(df))]
+        batch = df.iloc[
+            i : i + cfg.batch_size
+        ]  # may be smaller than batch_size in the last batch
 
         # Prepare questions
         questions = batch[
@@ -181,7 +184,7 @@ def generate_and_collect_activations(
         tokenizer.padding_side = "left"  # last token is the prompt's
         inputs = tokenizer.apply_chat_template(
             prompts,
-            tokeinze=True,
+            tokenize=True,
             add_generation_prompt=True,
             return_dict=True,
             return_tensors="pt",
@@ -192,11 +195,11 @@ def generate_and_collect_activations(
         # # DEBUG: print proccessed prompt
         # print(f"inputs_ids shape: {inputs['input_ids'].shape}")
         # print("attention mask:\n", inputs["attention_mask"])
-        # procced_prompts = tokenizer.batch_decode(
+        # proccessed_prompts = tokenizer.batch_decode(
         #     inputs["input_ids"], skip_special_tokens=False
         # )
-        # print("procced prompts:")
-        # for pp in procced_prompts:
+        # print("proccessed prompts:")
+        # for pp in proccessed_prompts:
         #     print("=" * 120)
         #     print(pp)
 
@@ -228,22 +231,13 @@ def generate_and_collect_activations(
         generated_tokens = outputs[:, prompt_lengths:]
         answers = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
-        # # DEBUG: print answers
-        # print("*****GENERATED ANSWERS:*****")
-        # for a in answers:
-        #     print(a)
-        #     print("=" * 120)
+        df.iloc[i : i + cfg.batch_size, df.columns.get_loc("raw_answer")] = answers
 
         answers = [ds.extract_answer_func(a)[0] for a in answers]
 
-        # # DEBUG: print answers after extracing answers
-        # print("*****EXTRACTED ANSWERS:******")
-        # for a in answers:
-        #     print(a)
-        #     print("=" * 120)
-
         # Set answers in df
-        df.loc[i : min(i + cfg.batch_size, len(df)) - 1, "answer"] = answers
+        answer_col_idx = df.columns.get_loc("answer")
+        df.iloc[i : i + cfg.batch_size, answer_col_idx] = answers
 
         # Store activations from the FIRST forward pass (the prompt processing)
         # The first forward pass processes the full prompt and the hooks captures the last token activation
@@ -275,7 +269,7 @@ def generate_and_collect_activations(
         return re.sub(r"\W", "", s)
 
     df["is_correct"] = df.apply(
-        lambda row: normalize_str(row.answer) == normalize_str(row.golden_label),
+        lambda row: normalize_str(row["answer"]) == normalize_str(row["golden_label"]),
         axis=1,
     )
     # Remove hooks
