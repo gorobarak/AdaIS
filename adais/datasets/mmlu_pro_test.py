@@ -32,6 +32,7 @@ class MmluProTest(parameterized.TestCase):
       ("The proposed answer is: CC", None),
       ("The proposed answer is: NONE.", None),
       ("The proposed answer is: ELSE.", None),
+      ("The proposed answer is: None of the above.", None),
       ("The proposed answer is: (F).", "F"),
       ("The proposed answer is: (H).", "H"),
   )
